@@ -6,6 +6,18 @@ Ein offener elektronischer Heizkostenverteiler nach dem Zweifühler-Prinzip (äh
 
 > **Rechtlicher Hinweis:** Für eine Abrechnung nach der Heizkostenverordnung braucht man zugelassene, normkonforme Geräte. Dieses Projekt ist für Eigenverbrauch, Vergleichsmessungen und Experimente gedacht und ersetzt das Gerät des Messdienstes nicht.
 
+## Hintergrund
+
+Die Heizkosten sind derzeit enorm hoch, meine Wohnung ist nicht besonders gut isoliert, und über den laufenden Verbrauch habe ich keinerlei Kontrolle. Am Heizkörper hängt zwar ein elektronischer Heizkostenverteiler des Messdienstes, ein **ista doprimo 3 radio net**. Seine Funktelegramme sind aber AES-verschlüsselt, und den Schlüssel gibt der Hersteller nicht heraus. Man sieht seinen Verbrauch also erst mit der Jahresabrechnung, wenn es zu spät ist, noch etwas zu ändern.
+
+Daher dieses Projekt: ein eigener, offener Heizkostenverteiler, dessen Werte man jederzeit selbst sieht, auf dem Display, in der Weboberfläche oder in Home Assistant.
+
+**Erstes Ziel:** Messwerte, die denen des eingebauten doprimo 3 möglichst nahekommen. Dazu hängen beide Geräte am selben Heizkörper, und die Zuwächse werden verglichen. Das Verhältnis ergibt den Korrekturfaktor Kc (siehe [Messprinzip und Algorithmus](#messprinzip-und-algorithmus)).
+
+**Warum zuerst ein ESP32?** Für den ESP32 gibt es sehr viele Ressourcen: Bibliotheken, Beispiele, Foren und günstige Entwicklungsboards. Damit lässt sich schnell und bequem entwickeln, mit WLAN, Weboberfläche und Display. Für ein batteriebetriebenes Gerät, das jahrelang am Heizkörper hängt, ist er aber viel zu stromhungrig.
+
+**Später:** Portierung auf den **TI CC1312** (CC1312R, Sub-1-GHz-Funk-Mikrocontroller mit sehr geringem Stromverbrauch), mit deutlich weniger „Schnickschnack“: kein WLAN, keine Weboberfläche, kein Farbdisplay, Übertragung per wireless M-Bus. Deshalb ist der Code von Anfang an zweigeteilt. Der Kern (Messung, Bewertung, Zählerstände, Telegramme) ist plattformunabhängig und wird unverändert übernommen. Neu geschrieben werden nur die Treiber (siehe [Software-Architektur](#software-architektur-und-portierung-auf-den-cc1312)).
+
 ---
 
 ## Inhaltsverzeichnis
@@ -17,6 +29,7 @@ Ein offener elektronischer Heizkostenverteiler nach dem Zweifühler-Prinzip (äh
 5. [OMS / wM-Bus-Telegramm](#oms--wm-bus-telegramm)
 6. [Software-Architektur und Portierung auf den CC1312](#software-architektur-und-portierung-auf-den-cc1312)
 7. [Offene Punkte](#offene-punkte)
+8. [Lizenz](#lizenz)
 
 ---
 
