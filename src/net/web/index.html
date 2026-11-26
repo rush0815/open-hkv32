@@ -315,6 +315,11 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
           <div class="mval" id="s-life">–</div>
           <button type="button" class="danger" id="resetlife" title="Gesamtzähler auf 0 setzen"><svg><use href="#i-refresh"/></svg>Zurücksetzen</button>
         </div>
+        <div class="mrow" id="gaprow" hidden>
+          <div><b>Letzter Zeitverlust</b><span class="hint" id="s-gap"></span></div>
+          <div class="mval" id="s-gapu">–</div>
+          <span></span>
+        </div>
         <div class="offbox">
           <div>
             <b>Zähler-Offset</b>
@@ -370,8 +375,8 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
           <div><label>Zeitkonstante τ (min)</label><input name="rtau" type="number" step="1" min="0" max="60"></div>
         </div>
         <label>Kalibrieren: Raumtemperatur laut Thermometer (°C)</label>
-        <div class="row" style="margin-top:0"><input id="calref" inputmode="decimal" placeholder="z. B. 21,5" style="max-width:140px"><button type="button" id="calc">c berechnen</button></div>
-        <p class="hint" id="calhint">Thermometer mit Abstand zum Heizkörper in den Raum legen, Heizkörper muss warm sein. Das Ergebnis wird ins Feld eingetragen – danach speichern.</p>
+        <div class="row" style="margin-top:0"><input id="calref" inputmode="decimal" placeholder="z. B. 21,5" style="max-width:140px"><button type="button" id="calc">Berechnen</button></div>
+        <p class="hint" id="calhint">Zwei Schritte, Thermometer jeweils mit Abstand zum Heizkörper:<br><b>1. Heizkörper kalt</b> (weniger als 5 K über Raum) → ergibt den <b>Offset Raum</b> (Eigenwärme der Elektronik).<br><b>2. Heizkörper warm</b> (≥ 5 K über Raum, möglichst gleichbleibend) → ergibt die <b>Kopplung c</b>.<br>Das Ergebnis wird ins Feld eingetragen – danach speichern.</p>
       </div>
 
       <div class="card wide">
@@ -677,6 +682,13 @@ function renderMeter(){
   const s=S;if(!s)return;
   $("#s-cur").innerHTML=ve(s.units);
   $("#s-life").innerHTML=ve(s.units_lifetime);
+  const g=s.time_gap;$("#gaprow").hidden=!g;
+  if(g){
+    const fmt=t=>t?dmy(t)+" "+t.slice(11,16):"–";
+    const mins=g.end?Math.round((new Date(g.end)-new Date(g.start))/60000):null;
+    $("#s-gap").textContent=`Uhrzeit nach Neustart unbekannt (z. B. Stromausfall): ${fmt(g.start)} bis ${g.end?fmt(g.end):"noch offen"}`+(mins!=null?` (${mins>=120?Math.round(mins/60)+" h":mins+" min"}). In dieser Zeit gezählte Einheiten ohne genauen Zeitstempel:`:". Bisher ohne Zeitstempel gezählt:");
+    $("#s-gapu").innerHTML=ve(g.units);
+  }
   $("#s-since").textContent=s.period_start?"seit "+dmy(s.period_start):"Periodenbeginn unbekannt";
   $("#s-offinfo").innerHTML=s.offset?`Aktiver Offset: <b>${nf(s.offset.units)} VE</b>${s.offset.date?" seit "+dmy(s.offset.date):""}`:"Kein Offset gesetzt.";
   // the 12 months before the current one (device time, browser time as fallback)
@@ -736,6 +748,12 @@ $("#calc").onclick=async()=>{
   try{
     const r=await post("/api/action",{do:"calibrate_coupling",ref:v});
     if(!r.ok){toast(r.error,1);return}
+    if(r.kind=="offset"){
+      form.offA.value=r.offset.toFixed(1);setDirty(true);
+      $("#calhint").innerHTML=`Schritt 1 (Heizkörper kalt, ${nf(r.radiator_c)} °C): Raumfühler misst roh ${nf(r.room_raw_c)} °C, Thermometer ${nf(r.reference_c)} °C → <b>Offset Raum = ${nf(r.offset)} K</b> (Eigenwärme der Elektronik). Jetzt <b>Speichern</b>, später bei warmem Heizkörper erneut für c.`;
+      toast("Offset Raum = "+nf(r.offset)+" K – bitte speichern");
+      return;
+    }
     form.rcpl.value=r.coupling.toFixed(2);setDirty(true);
     $("#calhint").innerHTML=`Heizkörper ${nf(r.radiator_c)} °C, Raumfühler misst ${nf(r.room_measured_c)} °C, Thermometer ${nf(r.reference_c)} °C → <b>c = ${nf(r.coupling,2)}</b>. Zum Übernehmen unten <b>Speichern</b>.`;
     toast("c = "+nf(r.coupling,2)+" berechnet – bitte speichern");
@@ -785,7 +803,7 @@ const HELP={
   batlow:"Unter dieser Akkuspannung meldet das Gerät „Akku schwach“ (Display-Warnung, Statusbit im Telegramm).",
   rcpl:"Wie stark der Raumfühler von der Heizkörperwärme mitgezogen wird (0 = aus): T<sub>Raum</sub> = (T<sub>gemessen</sub> − c · T<sub>HK</sub>) / (1 − c). Am einfachsten mit der Kalibrierhilfe ermitteln.",
   rtau:"Der Raumfühler folgt dem Heizkörper verzögert (Wärmekapazität von Gehäuse und Fühler). Für die Kopplung wird deshalb ein um diese Zeitkonstante verzögerter Heizkörperwert verwendet. Standard 10 min; 0 = keine Verzögerung.",
-  "#calref":"Raumtemperatur von einem normalen Thermometer mit Abstand zum Heizkörper. Der Heizkörper muss dabei warm sein (≥ 5 K über Raum).",
+  "#calref":"Raumtemperatur von einem normalen Thermometer mit Abstand zum Heizkörper. Bei kaltem Heizkörper wird daraus der Offset Raum berechnet, bei warmem (≥ 5 K über Raum) die Kopplung c.",
   mint:"Wie oft gemessen und gezählt wird. Kürzer = genauer, aber mehr Stromverbrauch. Standard 120 s.",
   xfer:"Wann die Werte per WLAN (MQTT) gesendet werden:<br><b>Zahl</b> = alle N Minuten, z. B. <b>15</b><br><b>Uhrzeiten</b> = feste Zeiten, z. B. <b>06:00 12:00 18:00</b>",
   wmode:"<b>Immer an:</b> Weboberfläche jederzeit erreichbar, höchster Verbrauch.<br><b>Nur zur Übertragung:</b> WLAN geht nach Plan kurz an.<br><b>Aus:</b> nur per WLAN-Taste (GPIO 14).",

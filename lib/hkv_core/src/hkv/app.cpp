@@ -13,7 +13,7 @@ namespace {
 constexpr const char* kKeySettings = "settings";
 constexpr const char* kKeyData = "meter";
 constexpr uint32_t kSaveMinIntervalMs = 15u * 60u * 1000u;  // flash wear: at most every 15 min
-constexpr uint32_t kSaveMaxIntervalMs = 6u * 3600u * 1000u;
+constexpr uint32_t kSaveMaxIntervalMs = 3600u * 1000u;  // also keeps lastKnownUtc fresh (time gaps)
 constexpr uint32_t kDisplayRefreshMs = 250;  // smooth progress animations
 
 // Layout of MeterData version 2 (without counter offset) - for migration.
@@ -71,14 +71,23 @@ void HkvApp::begin(uint32_t defaultMeterId) {
   MeterDataV2 v2;
   if (loadObject(hal_.storage, kKeyData, kDataVersion, data_)) {
     // current format
-  } else if (loadObject(hal_.storage, kKeyData, 3, data_)) {
-    static_assert((offsetof(MeterData, lifetimeMeasurements) + alignof(MeterData) - 1) / alignof(MeterData) *
-                          alignof(MeterData) ==
-                      sizeof(MeterData),
-                  "v3 -> v4 migration assumes the new field fits into the former tail padding");
-    // v3 has the same size: the new counter sits in former padding bytes
-    data_.lifetimeMeasurements = 0;
-    HKV_LOG("meter data migrated (v3 -> v4)");
+  } else if (loadBlob(hal_.storage, kKeyData, 4, &data_, offsetof(MeterData, lastKnownUtc)) ||
+             loadBlob(hal_.storage, kKeyData, 3, &data_, offsetof(MeterData, lastKnownUtc))) {
+    // v3 and v4 stored the same number of bytes (v4's measurement counter used former
+    // tail padding of v3); the time-gap fields of v5 are appended behind them.
+    static_assert(offsetof(MeterData, lastKnownUtc) == offsetof(MeterData, lifetimeMeasurements) + 4 &&
+                      offsetof(MeterData, lastKnownUtc) % alignof(MeterData) == 0,
+                  "data migration assumes v3/v4 size == offset of the first v5 field");
+    uint16_t from = 4;
+    if (!loadBlob(hal_.storage, kKeyData, 4, &data_, offsetof(MeterData, lastKnownUtc))) {
+      from = 3;
+      data_.lifetimeMeasurements = 0;  // in v3 these bytes were padding
+    }
+    data_.lastKnownUtc = 0;
+    data_.gapStartUtc = 0;
+    data_.gapEndUtc = 0;
+    data_.gapMilliUnits = 0;
+    HKV_LOG("meter data migrated (v%u -> v%u)", from, kDataVersion);
     saveObject(hal_.storage, kKeyData, kDataVersion, data_);
   } else if (loadObject(hal_.storage, kKeyData, 2, v2)) {
     Ledger::reset(data_);
@@ -103,6 +112,17 @@ void HkvApp::begin(uint32_t defaultMeterId) {
     if (!saveObject(hal_.storage, kKeyData, kDataVersion, data_)) data_.errorHistory |= kErrStorage;
   }
   savedUnits_ = ledger_.currentUnits();
+
+  // Booted without a valid clock (power loss, no RTC backup): a time gap starts at the
+  // last known time. Units counted until the clock is set again have no exact timestamp.
+  if (!hal_.clock.isTimeValid() && data_.lastKnownUtc != 0) {
+    timeGapOpen_ = true;
+    data_.gapStartUtc = data_.lastKnownUtc;
+    data_.gapEndUtc = 0;
+    data_.gapMilliUnits = 0;
+    HKV_LOG("time unknown after restart - gap starts at last known time %lu",
+            static_cast<unsigned long>(data_.lastKnownUtc));
+  }
 
   hal_.radiator.begin();
   hal_.radiator.setEmissivity(settings_.emissivity);
@@ -135,7 +155,17 @@ void HkvApp::poll() {
   // Clock just became valid (NTP, browser): measure at once so time-based state
   // (error flag, due date, summer mode) is correct immediately.
   const bool timeValid = hal_.clock.isTimeValid();
-  if (timeValid && !lastTimeValid_) measureDue_ = true;
+  if (timeValid && !lastTimeValid_) {
+    measureDue_ = true;
+    if (timeGapOpen_) {  // time gap closed: remember when, persist right away
+      timeGapOpen_ = false;
+      data_.gapEndUtc = hal_.clock.nowUtc();
+      HKV_LOG("time restored - gap %lu s, %lu milli-units counted without timestamp",
+              static_cast<unsigned long>(data_.gapEndUtc - data_.gapStartUtc),
+              static_cast<unsigned long>(data_.gapMilliUnits));
+      saveData(true);
+    }
+  }
   lastTimeValid_ = timeValid;
 
   if (measureDue_ || reached(now, nextMeasureMs_)) {
@@ -202,7 +232,13 @@ void HkvApp::measure() {
   // Rectangle rule: the rate at the end of the interval is applied to the whole interval.
   updateRadiatorLag(snap_.radiatorRaw);
   snap_.alloc = evaluate(settings_, snap_.radiatorRaw, snap_.roomRaw, summer, radiatorLagC_);
+  const uint64_t milliBefore = data_.currentMilliUnits;
   ledger_.accumulate(snap_.alloc.unitsPerHour, dtS);
+  if (timeValid) {
+    data_.lastKnownUtc = hal_.clock.nowUtc();
+  } else if (timeGapOpen_) {
+    data_.gapMilliUnits += static_cast<uint32_t>(data_.currentMilliUnits - milliBefore);
+  }
 
   uint32_t err = 0;
   if (!snap_.radiatorRaw.valid) err |= kErrRadiatorSensor;

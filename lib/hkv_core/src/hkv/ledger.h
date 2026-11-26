@@ -41,6 +41,11 @@ struct MeterData {
   uint8_t offsetDay;
   // --- added in data version 4 (keep new fields at the end) ---
   uint32_t lifetimeMeasurements;  // measurements since commissioning / last lifetime reset
+  // --- added in data version 5: time gaps (e.g. power loss without RTC backup) ---
+  uint32_t lastKnownUtc;          // last time the clock was valid (saved at least hourly)
+  uint32_t gapStartUtc;           // last time gap: last known time before it, 0 = none so far
+  uint32_t gapEndUtc;             // ... time when the clock was valid again, 0 = still open
+  uint32_t gapMilliUnits;         // units counted while the time was unknown
 };
 
 class Ledger {

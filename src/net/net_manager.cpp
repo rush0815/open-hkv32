@@ -926,10 +926,27 @@ void NetManager::handleAction() {
     const float lag = app_.radiatorLagC();
     const float rad = (isnan(lag) ? l.radiatorRaw.celsius : lag) + st.radiatorOffsetC;
     const float roomMeas = l.roomRaw.celsius + st.roomOffsetC;
+    // Two-point calibration:
+    //  radiator cold (< 5 K above room): the room sensor's error is mainly its own offset
+    //  (self-heating of the electronics) -> suggest "Offset Raum", taking the currently set
+    //  coupling into account: raw + offset = ref + c * (rad - ref);
+    //  radiator warm (>= 5 K above room): -> suggest coupling c (with the current offset).
+    //  Repeating both steps lets offset and c converge.
+    const float span = rad - ref;
+    if (span < 5.0f) {
+      const float rawRoom = l.roomRaw.celsius;
+      const float offset = ref + st.roomCoupling * (span > 0.0f ? span : 0.0f) - rawRoom;
+      char b[200];
+      snprintf(b, sizeof(b),
+               "{\"ok\":true,\"kind\":\"offset\",\"offset\":%.1f,\"radiator_c\":%.1f,\"room_raw_c\":%.1f,\"reference_c\":%.1f}",
+               static_cast<double>(offset), static_cast<double>(rad), static_cast<double>(rawRoom),
+               static_cast<double>(ref));
+      sendJson(200, b);
+      return;
+    }
     const float c = hkv::couplingFromReference(roomMeas, rad, ref);
     if (c < 0.0f) {
-      sendJson(409, jsonResult(false, "Heizkörper zu kalt (" + fmtFloat(rad, 1) +
-                                          " °C) – er muss mindestens 5 K wärmer als der Raum sein"));
+      sendJson(409, jsonResult(false, "Kopplung lässt sich nicht berechnen (Raumfühler kälter als das Thermometer?)"));
       return;
     }
     if (c > 0.8f) {
@@ -938,7 +955,7 @@ void NetManager::handleAction() {
       return;
     }
     char b[200];
-    snprintf(b, sizeof(b), "{\"ok\":true,\"coupling\":%.2f,\"radiator_c\":%.1f,\"room_measured_c\":%.1f,\"reference_c\":%.1f}",
+    snprintf(b, sizeof(b), "{\"ok\":true,\"kind\":\"coupling\",\"coupling\":%.2f,\"radiator_c\":%.1f,\"room_measured_c\":%.1f,\"reference_c\":%.1f}",
              static_cast<double>(c), static_cast<double>(rad), static_cast<double>(roomMeas), static_cast<double>(ref));
     sendJson(200, b);
   } else if (what == "reset_lifetime") {
@@ -1071,6 +1088,19 @@ void NetManager::statusJson(String& j) const {
   snprintf(b, sizeof(b), "\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   j += b;
 
+  // last time gap (restart without valid clock), local time
+  if (md.gapStartUtc) {
+    auto iso = [&st](uint32_t utc) {
+      const hkv::DateTime d = hkv::toLocal(utc, st.utcOffsetMin, st.euDst != 0);
+      char t[24];
+      snprintf(t, sizeof(t), "\"%04u-%02u-%02uT%02u:%02u\"", d.year, d.month, d.day, d.hour, d.minute);
+      return String(t);
+    };
+    j += "\"time_gap\":{\"start\":" + iso(md.gapStartUtc) + ",\"end\":" +
+         (md.gapEndUtc ? iso(md.gapEndUtc) : String("null")) + ",\"units\":" + fmtUnits(md.gapMilliUnits) + "},";
+  } else {
+    j += F("\"time_gap\":null,");
+  }
   if (md.offsetMilliUnits != 0) {
     snprintf(b, sizeof(b), "\"offset\":{\"units\":%s,\"date\":",
              fmtUnits(static_cast<uint64_t>(md.offsetMilliUnits)).c_str());

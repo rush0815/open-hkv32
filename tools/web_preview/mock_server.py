@@ -35,6 +35,7 @@ STATUS = {
     "power": {"wifi_mode": 0, "wake_left_s": None, "cpu_mhz": 80},
     "xfer": {"schedule": "15", "last_s": 200, "next_s": 700},
     "mac": "AA:BB:CC:DD:EE:FF", "offset": None,
+    "time_gap": {"start": "2026-11-20T14:02", "end": "2026-11-20T14:20", "units": 0.3},
     "monthly": [{"month": "2026-%02d" % m, "units": u} for m, u in
                 [(10, 96), (9, 71), (8, 55), (7, 52), (6, 49), (5, 46), (4, 38), (3, 27), (2, 16), (1, 8)]],
     "telegram": "2A4418637856341201087A2A000000046D250E583B036ED20400426C3F3C436E2E16000259721402656608",

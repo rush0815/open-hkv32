@@ -432,7 +432,8 @@ void test_meter_data_migration_v3() {
   v3.currentMilliUnits = 154066;
   v3.offsetMilliUnits = 154000;
   v3.offsetYear = 2026;
-  TEST_ASSERT_TRUE(saveObject(st, "meter", 3, v3));  // same size, older version number
+  // real v3 data: only the bytes up to the first v5 field (v3 and v4 had this size)
+  TEST_ASSERT_TRUE(saveBlob(st, "meter", 3, &v3, offsetof(MeterData, lastKnownUtc)));
   Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr};
   HkvApp app(hal);
   app.begin(1);
@@ -612,6 +613,49 @@ void test_room_coupling_lag() {
   TEST_ASSERT_TRUE(worstNoLag > 3.0f);
 }
 
+void test_time_gap_tracking() {
+  FakeClock clock;
+  FixedSensor rad(70.0f), room(20.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr};
+  {  // first run: clock valid, last known time gets stored
+    HkvApp app(hal);
+    app.begin(1);
+    clock.setUtc(1764547200);  // 2025-12-01 00:00 UTC
+    for (int i = 0; i < 70; ++i) {
+      clock.ms += 60000;
+      app.poll();
+    }
+    TEST_ASSERT_TRUE(app.meterData().lastKnownUtc >= 1764547200 + 60 * 60);
+  }
+  // "power loss": RAM gone, clock invalid after restart
+  const uint32_t lastKnown = [&] {
+    MeterData d;
+    TEST_ASSERT_TRUE(loadObject(st, "meter", HkvApp::kDataVersion, d));
+    return d.lastKnownUtc;
+  }();
+  TEST_ASSERT_TRUE(lastKnown != 0);
+  clock.valid = false;
+  clock.ms = 0;
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_EQUAL_UINT32(lastKnown, app.meterData().gapStartUtc);
+  for (int i = 0; i < 60; ++i) {  // 1 h counting without time at dT 50 K = 1 unit/h
+    clock.ms += 60000;
+    app.poll();
+  }
+  TEST_ASSERT_EQUAL_UINT32(0, app.meterData().gapEndUtc);
+  TEST_ASSERT_UINT32_WITHIN(60, 1000, app.meterData().gapMilliUnits);
+  clock.setUtc(lastKnown + 2 * 3600);
+  clock.ms += 1000;
+  app.poll();
+  TEST_ASSERT_TRUE(app.meterData().gapEndUtc >= lastKnown + 2 * 3600);
+  MeterData saved;
+  TEST_ASSERT_TRUE(loadObject(st, "meter", HkvApp::kDataVersion, saved));  // persisted at once
+  TEST_ASSERT_EQUAL_UINT32(app.meterData().gapEndUtc, saved.gapEndUtc);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_calendar_roundtrip);
@@ -631,6 +675,7 @@ int main(int, char**) {
   RUN_TEST(test_settings_migration_v3);
   RUN_TEST(test_room_coupling);
   RUN_TEST(test_room_coupling_lag);
+  RUN_TEST(test_time_gap_tracking);
   RUN_TEST(test_aes_fips197);
   RUN_TEST(test_crc16_check_value);
   RUN_TEST(test_oms_unencrypted_frame);
