@@ -36,7 +36,11 @@ struct AllocResult {
 
 constexpr float kFallbackRoomC = 20.0f;
 
-AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempReading& room, bool summer);
+// couplingRadiatorC: radiator temperature (raw, without offset) for the room-sensor coupling
+// correction, normally the time-lagged value (see Settings::roomCouplingTauMin). NAN = use
+// the current radiator reading.
+AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempReading& room, bool summer,
+                     float couplingRadiatorC = NAN);
 
 // Removes the radiator's influence on the room sensor:
 // T_room = (T_measured - c * T_radiator) / (1 - c). c = 0 returns T_measured unchanged.

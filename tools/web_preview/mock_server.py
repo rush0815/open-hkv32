@@ -42,7 +42,7 @@ STATUS = {
 CONFIG = {
     "meterId": 12345678, "mfct": "XXX", "ver": 1, "scale": 0, "kc": 1, "kq": 1.18, "exp": 1.3, "dtn": 50,
     "dts": 4.5, "tmin": 25, "tsum": 40, "sumS": 6, "sumE": 8, "offR": 0, "offA": 0, "dueD": 31, "dueM": 12,
-    "emis": 0.95, "mint": 120, "tint": 240, "utco": 60, "dst": 1, "batlow": 3400, "dto": 15, "sec": 0,
+    "emis": 0.95, "rcpl": 0.43, "rtau": 10, "mint": 120, "tint": 240, "utco": 60, "dst": 1, "batlow": 3400, "dto": 15, "sec": 0,
     "key_set": False, "wifi": 1, "ssid": "MeinWLAN", "pass_set": True, "host": "hkv-12345678",
     "ntp": "pool.ntp.org", "mqtt": 1, "mhost": "192.168.178.10", "mport": 1883, "muser": "hkv",
     "mpass_set": True, "mtopic": "hkv/12345678", "mdisc": 1, "admin_set": False, "xfer": "15",

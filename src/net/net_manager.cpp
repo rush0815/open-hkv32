@@ -623,9 +623,10 @@ void NetManager::handleConfigGet() {
            static_cast<double>(s.nominalDeltaK), static_cast<double>(s.startDeltaK),
            static_cast<double>(s.minRadiatorC), static_cast<double>(s.summerMinRadiatorC));
   j += b;
-  snprintf(b, sizeof(b), "\"sumS\":%u,\"sumE\":%u,\"offR\":%g,\"offA\":%g,\"dueD\":%u,\"dueM\":%u,\"emis\":%.2f,\"rcpl\":%.2f,",
+  snprintf(b, sizeof(b), "\"sumS\":%u,\"sumE\":%u,\"offR\":%g,\"offA\":%g,\"dueD\":%u,\"dueM\":%u,\"emis\":%.2f,\"rcpl\":%.2f,\"rtau\":%.0f,",
            s.summerStartMonth, s.summerEndMonth, static_cast<double>(s.radiatorOffsetC),
-           static_cast<double>(s.roomOffsetC), s.dueDay, s.dueMonth, static_cast<double>(s.emissivity), static_cast<double>(s.roomCoupling));
+           static_cast<double>(s.roomOffsetC), s.dueDay, s.dueMonth, static_cast<double>(s.emissivity), static_cast<double>(s.roomCoupling),
+           static_cast<double>(s.roomCouplingTauMin));
   j += b;
   snprintf(b, sizeof(b), "\"mint\":%u,\"tint\":%u,\"utco\":%d,\"dst\":%u,\"batlow\":%u,\"dto\":%u,\"sec\":%u,\"key_set\":%s,",
            s.measureIntervalS, s.telegramIntervalS, s.utcOffsetMin, s.euDst, s.batteryLowMv, s.displayTimeoutS,
@@ -674,6 +675,7 @@ void NetManager::handleConfigSave() {
   s.radiatorOffsetC = f("offR", s.radiatorOffsetC);
   s.roomOffsetC = f("offA", s.roomOffsetC);
   s.roomCoupling = f("rcpl", s.roomCoupling);
+  s.roomCouplingTauMin = f("rtau", s.roomCouplingTauMin);
   s.emissivity = f("emis", s.emissivity);
   s.dueDay = static_cast<uint8_t>(i("dueD", s.dueDay));
   s.dueMonth = static_cast<uint8_t>(i("dueM", s.dueMonth));
@@ -886,7 +888,7 @@ void NetManager::handleAction() {
     sendJson(200, jsonResult(true, "Übertragen"));
   } else if (what == "telegram") {
     app_.requestTelegram();
-    sendJson(200, jsonResult(true, "Telegramm wird gesendet"));
+    sendJson(200, jsonResult(true, "Telegramm erzeugt (USB-Ausgabe, kein Funkmodul verbaut)"));
   } else if (what == "reboot") {
     restartPending_ = true;
     restartAt_ = millis() + 1000;
@@ -920,7 +922,9 @@ void NetManager::handleAction() {
       sendJson(409, jsonResult(false, "Sensoren liefern gerade keine gültigen Werte"));
       return;
     }
-    const float rad = l.radiatorRaw.celsius + st.radiatorOffsetC;
+    // same lagged radiator value that the correction uses (see Settings::roomCouplingTauMin)
+    const float lag = app_.radiatorLagC();
+    const float rad = (isnan(lag) ? l.radiatorRaw.celsius : lag) + st.radiatorOffsetC;
     const float roomMeas = l.roomRaw.celsius + st.roomOffsetC;
     const float c = hkv::couplingFromReference(roomMeas, rad, ref);
     if (c < 0.0f) {
@@ -1013,6 +1017,8 @@ void NetManager::statusJson(String& j) const {
   j += b;
   j += "\"radiator_c\":" + (sn.radiatorRaw.valid ? fmtFloat(sn.alloc.radiatorC, 1) : String("null")) + ",";
   j += "\"room_c\":" + (sn.roomRaw.valid ? fmtFloat(sn.alloc.roomC, 1) : String("null")) + ",";
+  j += "\"radiator_lag_c\":" +
+       (!isnan(app_.radiatorLagC()) ? fmtFloat(app_.radiatorLagC() + st.radiatorOffsetC, 1) : String("null")) + ",";
   j += "\"room_raw_c\":" +
        (sn.roomRaw.valid ? fmtFloat(sn.roomRaw.celsius + st.roomOffsetC, 1) : String("null")) + ",";
   j += "\"pressure_hpa\":" + (!isnan(sn.roomRaw.pressureHpa) ? fmtFloat(sn.roomRaw.pressureHpa, 1) : String("null")) + ",";

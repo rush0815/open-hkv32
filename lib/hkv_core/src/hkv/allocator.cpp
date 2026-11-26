@@ -36,7 +36,8 @@ const char* countStateName(CountState s) {
   return "?";
 }
 
-AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempReading& room, bool summer) {
+AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempReading& room, bool summer,
+                     float couplingRadiatorC) {
   AllocResult r;
   if (!radiator.valid || isnan(radiator.celsius)) {
     r.state = CountState::SensorError;
@@ -44,7 +45,8 @@ AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempR
   }
   r.radiatorC = radiator.celsius + s.radiatorOffsetC;
   if (room.valid && !isnan(room.celsius)) {
-    r.roomC = correctRoomCoupling(room.celsius + s.roomOffsetC, r.radiatorC, s.roomCoupling);
+    const float radForCoupling = isnan(couplingRadiatorC) ? r.radiatorC : couplingRadiatorC + s.radiatorOffsetC;
+    r.roomC = correctRoomCoupling(room.celsius + s.roomOffsetC, radForCoupling, s.roomCoupling);
   } else {
     r.roomC = kFallbackRoomC;
     r.roomFallback = true;

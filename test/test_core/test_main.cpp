@@ -562,6 +562,56 @@ void test_settings_migration_v3() {
   TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, app.settings().roomCoupling);
 }
 
+void test_room_coupling_lag() {
+  // Room sensor model: lags the radiator with tau = 10 min, coupling c = 0.4, room 21 C.
+  FakeClock clock;
+  FixedSensor rad(30.0f), room(0.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr};
+  HkvApp app(hal);
+  app.begin(1);
+  Settings s = app.settings();
+  s.roomCoupling = 0.4f;
+  s.roomCouplingTauMin = 10.0f;
+  s.measureIntervalS = 60;
+  TEST_ASSERT_NULL(app.applySettings(s));
+  const float c = 0.4f, ta = 21.0f, tau = 600.0f;
+  float sensorLag = 30.0f;  // the physical sensor's own lagged view of the radiator
+  room.r.celsius = ta + c * (sensorLag - ta);  // settled state at 30 C before the cycles start
+  clock.ms += 60000;
+  app.poll();
+  float worst = 0.0f;
+  for (int i = 0; i < 180; ++i) {  // 3 h, radiator heats up and cools down in 1 h cycles
+    const int minute = i % 60;
+    rad.r.celsius = minute < 15 ? 52.0f : 30.0f;
+    sensorLag += (rad.r.celsius - sensorLag) * (1.0f - expf(-60.0f / tau));
+    room.r.celsius = ta + c * (sensorLag - ta);
+    clock.ms += 60000;
+    app.poll();
+    if (i > 5) {
+      const float err = fabsf(app.snapshot().alloc.roomC - ta);
+      if (err > worst) worst = err;
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(worst < 1.0f, "corrected room temperature must stay within 1 K");
+  // without the lag (tau = 0) the same cycles cause several kelvin of error
+  s.roomCouplingTauMin = 0.0f;
+  TEST_ASSERT_NULL(app.applySettings(s));
+  float worstNoLag = 0.0f;
+  for (int i = 0; i < 120; ++i) {
+    const int minute = i % 60;
+    rad.r.celsius = minute < 15 ? 52.0f : 30.0f;
+    sensorLag += (rad.r.celsius - sensorLag) * (1.0f - expf(-60.0f / tau));
+    room.r.celsius = ta + c * (sensorLag - ta);
+    clock.ms += 60000;
+    app.poll();
+    const float err = fabsf(app.snapshot().alloc.roomC - ta);
+    if (err > worstNoLag) worstNoLag = err;
+  }
+  TEST_ASSERT_TRUE(worstNoLag > 3.0f);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_calendar_roundtrip);
@@ -580,6 +630,7 @@ int main(int, char**) {
   RUN_TEST(test_settings_migration_v1);
   RUN_TEST(test_settings_migration_v3);
   RUN_TEST(test_room_coupling);
+  RUN_TEST(test_room_coupling_lag);
   RUN_TEST(test_aes_fips197);
   RUN_TEST(test_crc16_check_value);
   RUN_TEST(test_oms_unencrypted_frame);

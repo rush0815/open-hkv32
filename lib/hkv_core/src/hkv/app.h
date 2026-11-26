@@ -68,6 +68,8 @@ class HkvApp {
   // Active while kept alive or while the display shows the temperature page.
   bool liveActive() const;
   const LiveValues& live() const { return live_; }
+  // Radiator temperature (raw) lagged like the room sensor - used for the coupling correction.
+  float radiatorLagC() const { return radiatorLagC_; }
   static constexpr uint32_t kLiveIntervalMs = 2000;
 
   // --- configuration / service (web portal, serial, NFC, ...) ---
@@ -96,7 +98,7 @@ class HkvApp {
   }
   bool monthlyValue(int ageIndex, MonthlyValue& out) const { return ledger_.monthlyValue(ageIndex, out); }
 
-  static constexpr uint16_t kSettingsVersion = 4;
+  static constexpr uint16_t kSettingsVersion = 5;
   static constexpr uint16_t kDataVersion = 4;
 
  private:
@@ -132,6 +134,9 @@ class HkvApp {
   NetInfo net_;
 
   LiveValues live_;
+  float radiatorLagC_ = NAN;
+  uint32_t radiatorLagMs_ = 0;
+  void updateRadiatorLag(const TempReading& rad);
   uint32_t liveUntilMs_ = 0;
   uint32_t lastLiveMs_ = 0;
 

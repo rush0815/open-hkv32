@@ -330,36 +330,50 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
 
     <section id="v-service" class="grid two" hidden>
       <div class="card wide">
-        <h2><svg><use href="#i-therm"/></svg>Messung &amp; Bewertung</h2>
-        <label>Zählernummer</label><input name="meterId" type="number" min="0" max="99999999">
-        <label>Skala</label><select name="scale"><option value="0">Einheitsskala</option><option value="1">Produktskala (mit Heizkörperleistung)</option></select>
+        <h2><svg><use href="#i-therm"/></svg>Heizkörper</h2>
+        <p class="hint" style="margin-top:0">Eigenschaften des Heizkörpers und die Bewertung nach EN 834.</p>
         <div class="f2">
-          <div><label>Kc (Wärmeübergang)</label><input name="kc" type="number" step="any"></div>
-          <div><label>Kq (kW, Produktskala)</label><input name="kq" type="number" step="any"></div>
+          <div><label>Skala</label><select name="scale"><option value="0">Einheitsskala</option><option value="1">Produktskala (mit Heizkörperleistung)</option></select></div>
+          <div><label>Normwärmeleistung Kq (kW)</label><input name="kq" type="number" step="any"></div>
         </div>
-        <label>Emissionsgrad Heizkörper (IR-Sensor)</label>
+        <div class="f3">
+          <div><label>Exponent n</label><input name="exp" type="number" step="any"></div>
+          <div><label>Normübertemperatur (K)</label><input name="dtn" type="number" step="any"></div>
+          <div><label>Bewertungsfaktor Kc</label><input name="kc" type="number" step="any"></div>
+        </div>
+        <label>Emissionsgrad der Oberfläche (IR-Sensor)</label>
         <input name="emis" type="number" step="0.01" min="0.10" max="1.00">
-        <p class="hint">1,00 = keine Korrektur. Lackierte Heizkörper liegen typisch bei 0,93–0,95, blankes Metall deutlich darunter (für IR ungeeignet). Wird mit der Gehäusetemperatur des Sensors umgerechnet; der Sensor selbst bleibt unverändert.</p>
-        <details>
-          <summary>Erweitert</summary>
-          <div class="f3">
-            <div><label>Exponent n</label><input name="exp" type="number" step="any"></div>
-            <div><label>dTn (K)</label><input name="dtn" type="number" step="any"></div>
-            <div><label>Start ab dT (K)</label><input name="dts" type="number" step="any"></div>
-            <div><label>Start ab T<sub>HK</sub> (°C)</label><input name="tmin" type="number" step="any"></div>
-            <div><label>Sommer ab (°C)</label><input name="tsum" type="number" step="any"></div>
-            <div><label>Sommer Monate</label><div style="display:flex;gap:6px"><input name="sumS" type="number" min="0" max="12"><input name="sumE" type="number" min="0" max="12"></div></div>
-            <div><label>Offset HK (K)</label><input name="offR" type="number" step="any"></div>
-            <div><label>Offset Raum (K)</label><input name="offA" type="number" step="any"></div>
-            <div><label>Akku schwach (mV)</label><input name="batlow" type="number"></div>
-            <div><label>Kopplung Raumfühler c</label><input name="rcpl" type="number" step="0.01" min="0" max="0.8"></div>
-          </div>
-          <p class="hint">Der Raumfühler sitzt am Heizkörper und wird von dessen Wärme mitgezogen. Die Kopplung c rechnet das heraus: T<sub>Raum</sub> = (T<sub>gemessen</sub> − c · T<sub>HK</sub>) / (1 − c). 0 = aus.</p>
-          <label>Kalibrieren: Raumtemperatur laut Thermometer (°C)</label>
-          <div class="row" style="margin-top:0"><input id="calref" inputmode="decimal" placeholder="z. B. 21,5" style="max-width:140px"><button type="button" id="calc">c berechnen</button></div>
-          <p class="hint" id="calhint">Thermometer mit Abstand zum Heizkörper in den Raum legen, Heizkörper muss warm sein. Das Ergebnis wird ins Feld eingetragen – danach speichern.</p>
-        </details>
       </div>
+
+      <div class="card">
+        <h2><svg><use href="#i-chart"/></svg>Zählung</h2>
+        <p class="hint" style="margin-top:0">Ab wann gezählt wird.</p>
+        <div class="f2">
+          <div><label>Start ab ΔT (K)</label><input name="dts" type="number" step="any"></div>
+          <div><label>Start ab T<sub>HK</sub> (°C)</label><input name="tmin" type="number" step="any"></div>
+        </div>
+        <div class="f2">
+          <div><label>Sommer: Start ab (°C)</label><input name="tsum" type="number" step="any"></div>
+          <div><label>Sommer-Monate (von / bis)</label><div style="display:flex;gap:6px"><input name="sumS" type="number" min="0" max="12"><input name="sumE" type="number" min="0" max="12"></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><svg><use href="#i-tool"/></svg>Kalibrierung Fühler</h2>
+        <p class="hint" style="margin-top:0">Korrekturen der beiden Temperaturfühler.</p>
+        <div class="f2">
+          <div><label>Offset Heizkörper (K)</label><input name="offR" type="number" step="any"></div>
+          <div><label>Offset Raum (K)</label><input name="offA" type="number" step="any"></div>
+        </div>
+        <div class="f2">
+          <div><label>Kopplung Raumfühler c</label><input name="rcpl" type="number" step="0.01" min="0" max="0.8"></div>
+          <div><label>Zeitkonstante τ (min)</label><input name="rtau" type="number" step="1" min="0" max="60"></div>
+        </div>
+        <label>Kalibrieren: Raumtemperatur laut Thermometer (°C)</label>
+        <div class="row" style="margin-top:0"><input id="calref" inputmode="decimal" placeholder="z. B. 21,5" style="max-width:140px"><button type="button" id="calc">c berechnen</button></div>
+        <p class="hint" id="calhint">Thermometer mit Abstand zum Heizkörper in den Raum legen, Heizkörper muss warm sein. Das Ergebnis wird ins Feld eingetragen – danach speichern.</p>
+      </div>
+
       <div class="card wide">
         <h2><svg><use href="#i-clock"/></svg>Intervalle</h2>
         <div class="f2">
@@ -379,6 +393,7 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
           <button type="button" id="publish"><svg><use href="#i-cloud"/></svg>Jetzt übertragen</button>
         </div>
       </div>
+
       <div class="card wide">
         <h2><svg><use href="#i-bat"/></svg>Energie</h2>
         <div class="f2">
@@ -402,58 +417,62 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
             </select>
           </div>
         </div>
-        <div class="f2">
+        <div class="f3">
           <div>
             <label>CPU-Takt</label>
             <select name="cpu">
               <option value="240">240 MHz</option>
               <option value="160">160 MHz</option>
-              <option value="80">80 MHz – sparsam (Minimum mit WLAN)</option>
+              <option value="80">80 MHz – sparsam</option>
             </select>
           </div>
+          <div><label>Akku schwach unter (mV)</label><input name="batlow" type="number"></div>
           <div>
-            <label class="sw" style="margin-top:34px"><span>Light-Sleep<small>Zwischen den Messungen schlafen, solange WLAN und Display aus sind (~0,8 mA)</small></span><input type="checkbox" name="lsleep"></label>
+            <label class="sw" style="margin-top:34px"><span>Light-Sleep<small>~0,8 mA zwischen den Messungen</small></span><input type="checkbox" name="lsleep"></label>
           </div>
         </div>
         <p class="hint" id="pwrstat" style="margin-top:12px"></p>
       </div>
+
       <div class="card wide">
-        <h2><svg><use href="#i-radio"/></svg>OMS / wireless M-Bus</h2>
-        <div class="f2">
+        <h2><svg><use href="#i-radio"/></svg>Gerät &amp; wireless M-Bus</h2>
+        <div class="f3">
+          <div><label>Zählernummer</label><input name="meterId" type="number" min="0" max="99999999"></div>
           <div><label>Hersteller</label><input name="mfct" maxlength="3" style="text-transform:uppercase"></div>
           <div><label>Version</label><input name="ver" type="number" min="0" max="255"></div>
         </div>
         <p class="hint">„XXX“ ist ein Platzhalter – für echten Funkbetrieb wird eine eigene FLAG-Kennung benötigt.</p>
-        <label>Verschlüsselung</label><select name="sec"><option value="0">Mode 0 – unverschlüsselt (nur Entwicklung)</option><option value="5">Mode 5 – AES-128-CBC</option></select>
-        <label>Funk-Sendeintervall (s)</label><input name="tint" type="number">
+        <div class="f2">
+          <div><label>Verschlüsselung</label><select name="sec"><option value="0">Mode 0 – unverschlüsselt (nur Entwicklung)</option><option value="5">Mode 5 – AES-128-CBC</option></select></div>
+          <div><label>Sendeintervall Telegramm (s)</label><input name="tint" type="number"></div>
+        </div>
         <label>AES-Schlüssel (32 Hex-Zeichen)</label><input name="key" maxlength="32" spellcheck="false" style="font-family:ui-monospace,monospace">
         <p class="hint" id="keyhint"></p>
+        <label>Letztes Telegramm</label>
+        <code class="tg" id="tg">–</code>
+        <div class="row">
+          <button type="button" id="copy"><svg><use href="#i-copy"/></svg>Kopieren</button>
+          <button type="button" data-act="telegram"><svg><use href="#i-radio"/></svg>Telegramm jetzt erzeugen</button>
+        </div>
+        <p class="hint"><b>Hinweis:</b> Im Prototyp ist kein 868-MHz-Funkmodul verbaut – es wird <b>nichts gefunkt</b>. Das Telegramm wird nur erzeugt, hier angezeigt und über USB (serielles Log) ausgegeben. Die Übertragung per WLAN/MQTT ist davon unabhängig. Dekodieren mit <b>wmbusmeters --analyze &lt;hex&gt;</b> (Mode 5: <b>--analyze=&lt;Schlüssel&gt;</b>).</p>
       </div>
+
       <div class="card">
         <h2><svg><use href="#i-chip"/></svg>Display</h2>
         <label class="sw" style="margin-top:0"><span>Farben invertieren<small>Viele IPS-Module zeigen sonst einen weißen statt schwarzen Hintergrund</small></span><input type="checkbox" name="dinv"></label>
         <label class="sw"><span>Um 180° drehen<small>Falls das Display auf dem Kopf eingebaut ist</small></span><input type="checkbox" name="dflip"></label>
         <label>Display aus nach (Sekunden)</label><input name="dto" type="number" min="3" max="600">
       </div>
+
       <div class="card">
-        <h2><svg><use href="#i-radio"/></svg>OMS-Telegramm</h2>
-        <label style="margin-top:0">Letztes Telegramm</label>
-        <code class="tg" id="tg">–</code>
-        <div class="row">
-          <button type="button" id="copy"><svg><use href="#i-copy"/></svg>Kopieren</button>
-          <button type="button" data-act="telegram"><svg><use href="#i-radio"/></svg>Telegramm senden</button>
-        </div>
-        <p class="hint">Dekodieren mit <b>wmbusmeters --analyze &lt;hex&gt;</b> (Mode 5: <b>--analyze=&lt;Schlüssel&gt;</b>).</p>
-      </div>
-      <div class="card wide">
         <h2><svg><use href="#i-refresh"/></svg>System</h2>
         <div class="mrow">
-          <div><b>Neustart</b><span class="hint">Startet das Gerät neu. Einstellungen und Zählerstände bleiben erhalten.</span></div>
+          <div><b>Neustart</b><span class="hint">Einstellungen und Zählerstände bleiben erhalten.</span></div>
           <span></span>
           <button type="button" data-act="reboot"><svg><use href="#i-refresh"/></svg>Neustart</button>
         </div>
         <div class="mrow" style="border-bottom:0">
-          <div><b>Werkseinstellungen</b><span class="hint">Löscht <strong>alle</strong> Einstellungen, WLAN- und MQTT-Zugang sowie alle Zählerstände. Danach startet das Gerät im Einrichtungsmodus mit einem neuen WLAN-Passwort (siehe Display).</span></div>
+          <div><b>Werkseinstellungen</b><span class="hint">Löscht <strong>alle</strong> Einstellungen, WLAN- und MQTT-Zugang sowie alle Zählerstände. Danach startet das Gerät im Einrichtungsmodus mit neuem WLAN-Passwort (siehe Display).</span></div>
           <span></span>
           <button type="button" class="danger" id="factory"><svg><use href="#i-alert"/></svg>Zurücksetzen</button>
         </div>
@@ -764,7 +783,8 @@ const HELP={
   offR:"Feste Korrektur des Heizkörperfühlers in Kelvin (+/−), z. B. nach Vergleich mit einem Kontaktthermometer.",
   offA:"Feste Korrektur des Raumfühlers in Kelvin (+/−). Wird vor der Kopplungskorrektur angewendet.",
   batlow:"Unter dieser Akkuspannung meldet das Gerät „Akku schwach“ (Display-Warnung, Statusbit im Telegramm).",
-  rcpl:"Wie stark der Raumfühler von der Heizkörperwärme mitgezogen wird (0 = aus). Am einfachsten mit der Kalibrierhilfe darunter ermitteln.",
+  rcpl:"Wie stark der Raumfühler von der Heizkörperwärme mitgezogen wird (0 = aus): T<sub>Raum</sub> = (T<sub>gemessen</sub> − c · T<sub>HK</sub>) / (1 − c). Am einfachsten mit der Kalibrierhilfe ermitteln.",
+  rtau:"Der Raumfühler folgt dem Heizkörper verzögert (Wärmekapazität von Gehäuse und Fühler). Für die Kopplung wird deshalb ein um diese Zeitkonstante verzögerter Heizkörperwert verwendet. Standard 10 min; 0 = keine Verzögerung.",
   "#calref":"Raumtemperatur von einem normalen Thermometer mit Abstand zum Heizkörper. Der Heizkörper muss dabei warm sein (≥ 5 K über Raum).",
   mint:"Wie oft gemessen und gezählt wird. Kürzer = genauer, aber mehr Stromverbrauch. Standard 120 s.",
   xfer:"Wann die Werte per WLAN (MQTT) gesendet werden:<br><b>Zahl</b> = alle N Minuten, z. B. <b>15</b><br><b>Uhrzeiten</b> = feste Zeiten, z. B. <b>06:00 12:00 18:00</b>",
@@ -776,7 +796,7 @@ const HELP={
   mfct:"3-Buchstaben-Herstellerkennung im Funk-Telegramm. „XXX“ ist ein Platzhalter; für echten Funkbetrieb ist eine eigene FLAG-Kennung nötig.",
   ver:"Geräteversion im Funk-Telegramm (0–255).",
   sec:"Verschlüsselung des wM-Bus-Telegramms. Mode 5 = AES-128-CBC nach OMS; der Empfänger braucht dann den Schlüssel.",
-  tint:"Wie oft das OMS/wM-Bus-Telegramm gesendet wird (Funk, nicht WLAN). Beim ista doprimo 3: alle 4 Minuten.",
+  tint:"Wie oft das OMS/wM-Bus-Telegramm erzeugt wird. Im Prototyp ohne Funkmodul nur Ausgabe über USB; später per 868-MHz-Funk. Beim ista doprimo 3: alle 4 Minuten.",
   key:"AES-Schlüssel für Mode 5: 32 Hex-Zeichen. Leer lassen = unverändert. Gut aufbewahren – ohne ihn kann niemand die Telegramme lesen.",
   dinv:"Invertiert die Farben. Nötig, wenn das Display einen weißen statt schwarzen Hintergrund zeigt.",
   dflip:"Dreht die Anzeige um 180°, wenn das Display auf dem Kopf eingebaut ist.",

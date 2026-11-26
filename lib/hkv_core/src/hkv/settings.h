@@ -67,6 +67,12 @@ struct Settings {
   // Thermal coupling of the room sensor to the radiator in a device mounted on the radiator:
   // T_measured = T_room + c * (T_radiator - T_room)  ->  corrected out. 0 = off.
   float roomCoupling;
+
+  // --- added in settings version 5 ---
+  // The room sensor follows the radiator with a delay (thermal mass of housing/sensor).
+  // The coupling term therefore uses the radiator temperature low-pass filtered with
+  // this time constant. 0 = no filtering.
+  float roomCouplingTauMin;
 };
 
 void setDefaults(Settings& s, uint32_t defaultMeterId);

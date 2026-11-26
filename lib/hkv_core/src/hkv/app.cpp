@@ -1,5 +1,6 @@
 #include "hkv/app.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -46,7 +47,8 @@ void HkvApp::begin(uint32_t defaultMeterId) {
       uint16_t version;
       size_t size;
     };
-    const OldVersion olds[] = {{3, offsetof(Settings, roomCoupling)},
+    const OldVersion olds[] = {{4, offsetof(Settings, roomCouplingTauMin)},
+                               {3, offsetof(Settings, roomCoupling)},
                                {2, offsetof(Settings, displayInvert)},
                                {1, offsetof(Settings, emissivity)}};
     for (const OldVersion& o : olds) {
@@ -198,7 +200,8 @@ void HkvApp::measure() {
   const bool summer = timeValid && isSummer(settings_, local.month);
 
   // Rectangle rule: the rate at the end of the interval is applied to the whole interval.
-  snap_.alloc = evaluate(settings_, snap_.radiatorRaw, snap_.roomRaw, summer);
+  updateRadiatorLag(snap_.radiatorRaw);
+  snap_.alloc = evaluate(settings_, snap_.radiatorRaw, snap_.roomRaw, summer, radiatorLagC_);
   ledger_.accumulate(snap_.alloc.unitsPerHour, dtS);
 
   uint32_t err = 0;
@@ -240,13 +243,30 @@ void HkvApp::keepLiveAlive(uint32_t keepMs) {
   if (!wasActive || !live_.valid) liveMeasure();  // first value right away
 }
 
+// First-order lag of the radiator temperature, same time behaviour as the room sensor.
+void HkvApp::updateRadiatorLag(const TempReading& rad) {
+  if (!rad.valid || isnan(rad.celsius)) return;
+  const uint32_t now = hal_.clock.uptimeMs();
+  const float tauS = settings_.roomCouplingTauMin * 60.0f;
+  if (isnan(radiatorLagC_) || tauS <= 0.0f) {
+    radiatorLagC_ = rad.celsius;
+    radiatorLagMs_ = now;
+    return;
+  }
+  const float dt = static_cast<float>(now - radiatorLagMs_) / 1000.0f;
+  radiatorLagMs_ = now;
+  if (dt <= 0.0f) return;
+  radiatorLagC_ += (rad.celsius - radiatorLagC_) * (1.0f - expf(-dt / tauS));
+}
+
 void HkvApp::liveMeasure() {
   lastLiveMs_ = hal_.clock.uptimeMs();
   live_.radiatorRaw = hal_.radiator.read();
   live_.roomRaw = hal_.room.read();
   DateTime local;
   const bool summer = localTime(local) && isSummer(settings_, local.month);
-  live_.alloc = evaluate(settings_, live_.radiatorRaw, live_.roomRaw, summer);
+  updateRadiatorLag(live_.radiatorRaw);
+  live_.alloc = evaluate(settings_, live_.radiatorRaw, live_.roomRaw, summer, radiatorLagC_);
   live_.uptimeMs = lastLiveMs_;
   live_.valid = true;
   if (displayOn_) refreshDisplay();
