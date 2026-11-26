@@ -101,6 +101,13 @@ details[open] summary::before{transform:rotate(90deg)}
 .overlay .card{max-width:420px;text-align:center}
 .spin{width:44px;height:44px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--acc);animation:sp 1s linear infinite;margin:6px auto 14px}
 @keyframes sp{to{transform:rotate(360deg)}}
+.help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;margin:0 0 0 6px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--card2);color:var(--acc2);font:800 11px/1 system-ui,sans-serif;cursor:help;vertical-align:1px;flex:none;letter-spacing:0;text-transform:none}
+.help:hover,.help:focus-visible,.help.on{border-color:var(--acc);background:var(--acc);color:#fff;outline:none}
+#tip{position:fixed;z-index:50;max-width:min(320px,calc(100vw - 16px));background:var(--txt);color:var(--bg);padding:10px 13px;border-radius:11px;font-size:13px;line-height:1.45;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.35);pointer-events:none;opacity:0;transform:translateY(-3px);transition:opacity .12s,transform .12s}
+#tip.show{opacity:1;transform:none}
+#tip b{font-weight:700}
+#tip::before{content:"";position:absolute;top:-6px;left:var(--ax,20px);border:6px solid transparent;border-top:0;border-bottom-color:var(--txt)}
+#tip.up::before{top:auto;bottom:-6px;border-bottom:0;border-top:6px solid var(--txt)}
 .mrow{display:grid;grid-template-columns:1fr auto auto;gap:6px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .mrow b{display:block}
 .mrow .hint{margin:0}
@@ -457,6 +464,7 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
 
 <div class="savebar" id="savebar"><div><span>Ungespeicherte Änderungen</span><button type="button" id="discard">Verwerfen</button><button type="button" class="pri" id="save">Speichern</button></div></div>
 <div class="toast" id="toast"></div>
+<div id="tip" role="tooltip"></div>
 <div class="overlay" id="overlay"><div class="card"><div class="spin"></div><h3 style="margin:0 0 8px" id="ovt">Neustart …</h3><p class="hint" id="ovm"></p></div></div>
 
 <script>
@@ -721,6 +729,102 @@ function renderPower(){
 }
 
 // ---------------- routing
+// ---------------- help bubbles ("?" next to the parameters)
+// key = input name (or #id), value = explanation. Missing keys simply get no "?".
+const HELP={
+  wifi:"Verbindet das Gerät mit deinem Heimnetz. Aus = nur Einrichtungsmodus per Taster (3 s halten).",
+  ssid:"Name deines WLANs. Mit dem Pfeil-Knopf daneben suchen und aus der Liste wählen.",
+  pass:"WLAN-Passwort. Leer lassen, um das gespeicherte Passwort zu behalten.",
+  host:"Name im Heimnetz. Die Weboberfläche ist dann unter http://<b>&lt;Hostname&gt;</b>.local erreichbar.",
+  ntp:"Zeitserver für die automatische Uhrzeit. Standard: pool.ntp.org. Ohne gültige Uhrzeit gibt es keinen Stichtag und keine Monatswerte.",
+  mqtt:"Sendet die Messwerte an einen MQTT-Broker, z. B. den Mosquitto-Broker von Home Assistant.",
+  mhost:"IP-Adresse oder Name des MQTT-Brokers – bei Home Assistant meist dessen IP-Adresse.",
+  mport:"Port des Brokers, normalerweise 1883.",
+  muser:"Benutzername am Broker. Bei Home Assistant ein normaler HA-Benutzer (z. B. „hkv“).",
+  mpass:"Passwort des Broker-Benutzers. Leer lassen = unverändert.",
+  mtopic:"Unter diesem Topic werden die Werte veröffentlicht: <b>&lt;Topic&gt;/state</b> (JSON) und <b>&lt;Topic&gt;/status</b> (online/offline).",
+  mdisc:"Home Assistant legt Gerät und Sensoren automatisch an (MQTT-Discovery). Nur ausschalten, wenn du die Sensoren selbst konfigurierst.",
+  dueD:"Tag des Stichtags. Am Ende dieses Tages wird der Zählerstand als Vorperiode gespeichert und die neue Periode beginnt bei 0.",
+  dueM:"Monat des Stichtags (meist 12 = Abrechnung zum 31.12.).",
+  utco:"Abstand der Ortszeit zu UTC in Minuten. Deutschland/Österreich/Schweiz: 60.",
+  dst:"Stellt automatisch auf Sommerzeit um (letzter Sonntag im März bis letzter Sonntag im Oktober).",
+  admin:"Optionales Passwort für die Weboberfläche (Benutzer „admin“). Im Einrichtungsmodus wird es nie abgefragt.",
+  noadmin:"Entfernt das Web-Passwort wieder – die Einrichtung ist dann im Heimnetz ohne Anmeldung erreichbar.",
+  meterId:"Zählernummer (max. 8 Ziffern). Steht im Funk-Telegramm und im Namen des WLANs im Einrichtungsmodus.",
+  scale:"<b>Einheitsskala:</b> Einheiten ohne Heizkörperleistung – wie beim ista doprimo 3, die Faktoren kommen erst in der Abrechnung dazu.<br><b>Produktskala:</b> mit der Heizkörperleistung Kq multipliziert, ergibt ungefähr kWh.",
+  kc:"Bewertungsfaktor für den Wärmeübergang vom Heizkörper zum Fühler (EN 834). Damit gleichst du das Gerät an einen Referenz-HKV an: Kc = Zuwachs Referenz ÷ Zuwachs dieses Geräts.",
+  kq:"Normwärmeleistung des Heizkörpers in kW bei 75/65/20 °C (Herstellerangabe). Wird nur bei der Produktskala verwendet.",
+  emis:"Emissionsgrad der Heizkörperoberfläche für den IR-Sensor. Lackiert typisch 0,93–0,95; 1,00 = keine Korrektur.",
+  exp:"Heizkörperexponent n: wie stark die Leistung mit der Übertemperatur steigt. Plattenheizkörper ≈ 1,3.",
+  dtn:"Normübertemperatur nach EN 442 (75/65/20 °C → 50 K). Bezugswert der Formel – normalerweise nicht ändern.",
+  dts:"Gezählt wird erst, wenn der Heizkörper mindestens so viel wärmer ist als der Raum. ista doprimo 3: 4,5 K.",
+  tmin:"Gezählt wird nur, wenn der Heizkörper mindestens diese Temperatur hat.",
+  tsum:"Im Sommerzeitraum gilt diese höhere Schwelle – verhindert Zählen durch Sonneneinstrahlung.",
+  sumS:"Sommerzeitraum: erster und letzter Monat (z. B. 6 bis 8). 0 / 0 = keine Sommersperre.",
+  offR:"Feste Korrektur des Heizkörperfühlers in Kelvin (+/−), z. B. nach Vergleich mit einem Kontaktthermometer.",
+  offA:"Feste Korrektur des Raumfühlers in Kelvin (+/−). Wird vor der Kopplungskorrektur angewendet.",
+  batlow:"Unter dieser Akkuspannung meldet das Gerät „Akku schwach“ (Display-Warnung, Statusbit im Telegramm).",
+  rcpl:"Wie stark der Raumfühler von der Heizkörperwärme mitgezogen wird (0 = aus). Am einfachsten mit der Kalibrierhilfe darunter ermitteln.",
+  "#calref":"Raumtemperatur von einem normalen Thermometer mit Abstand zum Heizkörper. Der Heizkörper muss dabei warm sein (≥ 5 K über Raum).",
+  mint:"Wie oft gemessen und gezählt wird. Kürzer = genauer, aber mehr Stromverbrauch. Standard 120 s.",
+  xfer:"Wann die Werte per WLAN (MQTT) gesendet werden:<br><b>Zahl</b> = alle N Minuten, z. B. <b>15</b><br><b>Uhrzeiten</b> = feste Zeiten, z. B. <b>06:00 12:00 18:00</b>",
+  wmode:"<b>Immer an:</b> Weboberfläche jederzeit erreichbar, höchster Verbrauch.<br><b>Nur zur Übertragung:</b> WLAN geht nach Plan kurz an.<br><b>Aus:</b> nur per WLAN-Taste (GPIO 14).",
+  wake:"So lange bleibt das WLAN nach Druck auf die WLAN-Taste an (bzw. nach Umstellen auf einen Sparmodus).",
+  wps:"Modem-Sleep: der Funk schläft zwischen den Signalen des Routers. „Maximal“ spart am meisten, die Weboberfläche reagiert dann etwas träger.",
+  cpu:"Takt des Prozessors. 80 MHz spart Strom und reicht für dieses Gerät völlig aus.",
+  lsleep:"Light-Sleep zwischen den Messungen (~0,8 mA). Wirkt nur, wenn WLAN und Display aus sind.",
+  mfct:"3-Buchstaben-Herstellerkennung im Funk-Telegramm. „XXX“ ist ein Platzhalter; für echten Funkbetrieb ist eine eigene FLAG-Kennung nötig.",
+  ver:"Geräteversion im Funk-Telegramm (0–255).",
+  sec:"Verschlüsselung des wM-Bus-Telegramms. Mode 5 = AES-128-CBC nach OMS; der Empfänger braucht dann den Schlüssel.",
+  tint:"Wie oft das OMS/wM-Bus-Telegramm gesendet wird (Funk, nicht WLAN). Beim ista doprimo 3: alle 4 Minuten.",
+  key:"AES-Schlüssel für Mode 5: 32 Hex-Zeichen. Leer lassen = unverändert. Gut aufbewahren – ohne ihn kann niemand die Telegramme lesen.",
+  dinv:"Invertiert die Farben. Nötig, wenn das Display einen weißen statt schwarzen Hintergrund zeigt.",
+  dflip:"Dreht die Anzeige um 180°, wenn das Display auf dem Kopf eingebaut ist.",
+  dto:"Nach so vielen Sekunden ohne Tastendruck geht das Display aus (spart viel Strom).",
+  "#offval":"Wert, der zum aktuellen Zählerstand addiert wird – z. B. der Stand des alten Geräts nach einem Austausch. Ein neuer Wert ersetzt den alten, 0 entfernt ihn.",
+};
+
+function helpLabel(el){
+  const sw=el.closest("label.sw");if(sw)return sw;
+  let n=el;
+  for(let i=0;i<3&&n;i++){const p=n.previousElementSibling;if(p&&p.tagName=="LABEL")return p;n=n.parentElement}
+  return null;
+}
+function addHelp(){
+  for(const [key,text] of Object.entries(HELP)){
+    const el=key[0]=="#"?document.querySelector(key):document.querySelector(`[name="${key}"]`);if(!el)continue;
+    let target=key=="#offval"?document.querySelector(".offbox b"):helpLabel(el);
+    if(!target||target.dataset.help)continue;
+    target.dataset.help="1";
+    const b=document.createElement("button");b.type="button";b.className="help";b.textContent="?";b.dataset.tip=text;b.setAttribute("aria-label","Erklärung");
+    if(target.classList.contains("sw")){const span=target.querySelector("span"),small=span&&span.querySelector("small");span.insertBefore(b,small||null)}
+    else target.appendChild(b);
+  }
+}
+const tip=$("#tip");let tipFor=null;
+function showTip(b){
+  tipFor=b;$$(".help.on").forEach(x=>x.classList.remove("on"));b.classList.add("on");
+  tip.innerHTML=b.dataset.tip;tip.classList.add("show");
+  const r=b.getBoundingClientRect(),w=tip.offsetWidth,h=tip.offsetHeight,vw=document.documentElement.clientWidth;
+  let x=Math.min(Math.max(8,r.left+r.width/2-24),vw-w-8);
+  let y=r.bottom+9,up=false;
+  if(y+h>window.innerHeight-8&&r.top-h-9>8){y=r.top-h-9;up=true}
+  tip.classList.toggle("up",up);tip.style.left=x+"px";tip.style.top=y+"px";
+  tip.style.setProperty("--ax",Math.max(10,Math.min(w-22,r.left+r.width/2-x-6))+"px");
+}
+function hideTip(){tipFor=null;tip.classList.remove("show");$$(".help.on").forEach(x=>x.classList.remove("on"))}
+document.addEventListener("click",e=>{
+  const b=e.target.closest(".help");
+  if(b){e.preventDefault();e.stopPropagation();(tipFor===b&&!matchMedia("(hover:hover)").matches)?hideTip():showTip(b);return}
+  if(tipFor)hideTip();
+},true);
+document.addEventListener("mouseover",e=>{const b=e.target.closest(".help");if(b&&matchMedia("(hover:hover)").matches)showTip(b)});
+document.addEventListener("mouseout",e=>{const b=e.target.closest(".help");if(b&&b===tipFor&&matchMedia("(hover:hover)").matches)hideTip()});
+window.addEventListener("scroll",()=>{if(tipFor)hideTip()},{passive:true});
+window.addEventListener("resize",()=>{if(tipFor)hideTip()});
+document.addEventListener("keydown",e=>{if(e.key=="Escape")hideTip()});
+addHelp();
+
 const TABS=["status","meter","setup","service"];
 function route(){
   const h=location.hash.slice(1),tab=TABS.includes(h)?h:"status";
