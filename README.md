@@ -8,7 +8,7 @@ Ein offener elektronischer Heizkostenverteiler nach dem Zweifühler-Prinzip (äh
 
 ## Hintergrund
 
-Die Heizkosten sind derzeit enorm hoch, meine Wohnung ist nicht besonders gut isoliert, und über den laufenden Verbrauch habe ich keinerlei Kontrolle. Am Heizkörper hängt zwar ein elektronischer Heizkostenverteiler des Messdienstes, ein **ista doprimo 3 radio net**. Seine Funktelegramme sind aber AES-verschlüsselt, und den Schlüssel gibt der Hersteller nicht heraus. Man sieht seinen Verbrauch also erst mit der Jahresabrechnung, wenn es zu spät ist, noch etwas zu ändern.
+Die Heizkosten sind derzeit enorm hoch, die Wohnung des Autors ist nicht besonders gut isoliert, und über den laufenden Verbrauch gibt es keinerlei Kontrolle. Am Heizkörper hängt zwar ein elektronischer Heizkostenverteiler des Messdienstes, ein **ista doprimo 3 radio net**. Seine Funktelegramme sind aber AES-verschlüsselt, und den Schlüssel gibt der Hersteller nicht heraus. Man sieht seinen Verbrauch also erst mit der Jahresabrechnung, wenn es zu spät ist, noch etwas zu ändern.
 
 Daher dieses Projekt: ein eigener, offener Heizkostenverteiler, dessen Werte man jederzeit selbst sieht, auf dem Display, in der Weboberfläche oder in Home Assistant.
 
