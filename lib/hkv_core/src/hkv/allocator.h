@@ -38,4 +38,12 @@ constexpr float kFallbackRoomC = 20.0f;
 
 AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempReading& room, bool summer);
 
+// Removes the radiator's influence on the room sensor:
+// T_room = (T_measured - c * T_radiator) / (1 - c). c = 0 returns T_measured unchanged.
+float correctRoomCoupling(float measuredRoomC, float radiatorC, float coupling);
+
+// Calibration: coupling c from one reference room temperature (e.g. a thermometer).
+// Returns a negative value if the radiator is not warm enough (needs >= 5 K above the room).
+float couplingFromReference(float measuredRoomC, float radiatorC, float referenceRoomC);
+
 }  // namespace hkv

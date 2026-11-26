@@ -623,9 +623,9 @@ void NetManager::handleConfigGet() {
            static_cast<double>(s.nominalDeltaK), static_cast<double>(s.startDeltaK),
            static_cast<double>(s.minRadiatorC), static_cast<double>(s.summerMinRadiatorC));
   j += b;
-  snprintf(b, sizeof(b), "\"sumS\":%u,\"sumE\":%u,\"offR\":%g,\"offA\":%g,\"dueD\":%u,\"dueM\":%u,\"emis\":%.2f,",
+  snprintf(b, sizeof(b), "\"sumS\":%u,\"sumE\":%u,\"offR\":%g,\"offA\":%g,\"dueD\":%u,\"dueM\":%u,\"emis\":%.2f,\"rcpl\":%.2f,",
            s.summerStartMonth, s.summerEndMonth, static_cast<double>(s.radiatorOffsetC),
-           static_cast<double>(s.roomOffsetC), s.dueDay, s.dueMonth, static_cast<double>(s.emissivity));
+           static_cast<double>(s.roomOffsetC), s.dueDay, s.dueMonth, static_cast<double>(s.emissivity), static_cast<double>(s.roomCoupling));
   j += b;
   snprintf(b, sizeof(b), "\"mint\":%u,\"tint\":%u,\"utco\":%d,\"dst\":%u,\"batlow\":%u,\"dto\":%u,\"sec\":%u,\"key_set\":%s,",
            s.measureIntervalS, s.telegramIntervalS, s.utcOffsetMin, s.euDst, s.batteryLowMv, s.displayTimeoutS,
@@ -673,6 +673,7 @@ void NetManager::handleConfigSave() {
   s.summerEndMonth = static_cast<uint8_t>(i("sumE", s.summerEndMonth));
   s.radiatorOffsetC = f("offR", s.radiatorOffsetC);
   s.roomOffsetC = f("offA", s.roomOffsetC);
+  s.roomCoupling = f("rcpl", s.roomCoupling);
   s.emissivity = f("emis", s.emissivity);
   s.dueDay = static_cast<uint8_t>(i("dueD", s.dueDay));
   s.dueMonth = static_cast<uint8_t>(i("dueM", s.dueMonth));
@@ -903,6 +904,39 @@ void NetManager::handleAction() {
     restartPending_ = true;
     restartAt_ = millis() + 1500;
     sendJson(200, jsonResult(true, "Werkseinstellungen – Neustart"));
+  } else if (what == "calibrate_coupling") {
+    // c from a reference room temperature (thermometer); uses a fresh live reading.
+    String v = server_.arg("ref");
+    v.replace(",", ".");
+    const float ref = v.toFloat();
+    if (!v.length() || ref < 0.0f || ref > 40.0f) {
+      sendJson(400, jsonResult(false, "Bitte die Raumtemperatur vom Thermometer eingeben (°C)"));
+      return;
+    }
+    app_.keepLiveAlive();
+    const hkv::LiveValues& l = app_.live();
+    const hkv::Settings& st = app_.settings();
+    if (!l.valid || !l.radiatorRaw.valid || !l.roomRaw.valid) {
+      sendJson(409, jsonResult(false, "Sensoren liefern gerade keine gültigen Werte"));
+      return;
+    }
+    const float rad = l.radiatorRaw.celsius + st.radiatorOffsetC;
+    const float roomMeas = l.roomRaw.celsius + st.roomOffsetC;
+    const float c = hkv::couplingFromReference(roomMeas, rad, ref);
+    if (c < 0.0f) {
+      sendJson(409, jsonResult(false, "Heizkörper zu kalt (" + fmtFloat(rad, 1) +
+                                          " °C) – er muss mindestens 5 K wärmer als der Raum sein"));
+      return;
+    }
+    if (c > 0.8f) {
+      sendJson(409, jsonResult(false, "Kopplung " + fmtFloat(c, 2) +
+                                          " ist unplausibel hoch – sitzt der Raumfühler direkt am Heizkörper?"));
+      return;
+    }
+    char b[200];
+    snprintf(b, sizeof(b), "{\"ok\":true,\"coupling\":%.2f,\"radiator_c\":%.1f,\"room_measured_c\":%.1f,\"reference_c\":%.1f}",
+             static_cast<double>(c), static_cast<double>(rad), static_cast<double>(roomMeas), static_cast<double>(ref));
+    sendJson(200, b);
   } else if (what == "reset_lifetime") {
     if (server_.arg("confirm") != "yes") {
       sendJson(400, jsonResult(false, "Bestätigung fehlt"));
@@ -979,6 +1013,8 @@ void NetManager::statusJson(String& j) const {
   j += b;
   j += "\"radiator_c\":" + (sn.radiatorRaw.valid ? fmtFloat(sn.alloc.radiatorC, 1) : String("null")) + ",";
   j += "\"room_c\":" + (sn.roomRaw.valid ? fmtFloat(sn.alloc.roomC, 1) : String("null")) + ",";
+  j += "\"room_raw_c\":" +
+       (sn.roomRaw.valid ? fmtFloat(sn.roomRaw.celsius + st.roomOffsetC, 1) : String("null")) + ",";
   j += "\"pressure_hpa\":" + (!isnan(sn.roomRaw.pressureHpa) ? fmtFloat(sn.roomRaw.pressureHpa, 1) : String("null")) + ",";
   j += "\"humidity_pct\":" + (!isnan(sn.roomRaw.humidityPct) ? fmtFloat(sn.roomRaw.humidityPct, 1) : String("null")) + ",";
   snprintf(b, sizeof(b), "\"delta_k\":%.1f,\"rate_units_h\":%.2f,\"state\":\"%s\",\"room_fallback\":%s,",

@@ -96,7 +96,7 @@ class HkvApp {
   }
   bool monthlyValue(int ageIndex, MonthlyValue& out) const { return ledger_.monthlyValue(ageIndex, out); }
 
-  static constexpr uint16_t kSettingsVersion = 3;
+  static constexpr uint16_t kSettingsVersion = 4;
   static constexpr uint16_t kDataVersion = 4;
 
  private:

@@ -531,6 +531,37 @@ void test_settings_migration_v1() {
   TEST_ASSERT_FLOAT_WITHIN(1e-6f, 1.0f, app.settings().emissivity);
 }
 
+void test_room_coupling() {
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 34.0f, correctRoomCoupling(34.0f, 52.0f, 0.0f));   // off
+  TEST_ASSERT_FLOAT_WITHIN(1e-3f, 22.0f, correctRoomCoupling(34.0f, 52.0f, 0.4f));   // (34-20.8)/0.6
+  TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.4f, couplingFromReference(34.0f, 52.0f, 22.0f));
+  TEST_ASSERT_TRUE(couplingFromReference(24.0f, 25.0f, 22.0f) < 0.0f);              // radiator too cold
+  Settings s = defaults();
+  s.roomCoupling = 0.4f;
+  AllocResult r = evaluate(s, {true, 52.0f}, {true, 34.0f}, false);
+  TEST_ASSERT_FLOAT_WITHIN(1e-3f, 22.0f, r.roomC);
+  TEST_ASSERT_FLOAT_WITHIN(1e-3f, 30.0f, r.deltaK);
+}
+
+void test_settings_migration_v3() {
+  FakeClock clock;
+  FixedSensor rad(20.0f), room(20.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Settings v3;
+  setDefaults(v3, 55556666);
+  v3.displayInvert = 0;
+  v3.emissivity = 0.95f;
+  TEST_ASSERT_TRUE(saveBlob(st, "settings", 3, &v3, offsetof(Settings, roomCoupling)));
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr};
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_EQUAL_UINT32(55556666, app.settings().meterId);
+  TEST_ASSERT_EQUAL(0, app.settings().displayInvert);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.95f, app.settings().emissivity);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, app.settings().roomCoupling);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_calendar_roundtrip);
@@ -547,6 +578,8 @@ int main(int, char**) {
   RUN_TEST(test_transfer_schedule);
   RUN_TEST(test_emissivity_correction);
   RUN_TEST(test_settings_migration_v1);
+  RUN_TEST(test_settings_migration_v3);
+  RUN_TEST(test_room_coupling);
   RUN_TEST(test_aes_fips197);
   RUN_TEST(test_crc16_check_value);
   RUN_TEST(test_oms_unencrypted_frame);

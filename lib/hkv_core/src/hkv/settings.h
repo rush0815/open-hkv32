@@ -62,6 +62,11 @@ struct Settings {
   // --- added in settings version 3 ---
   uint8_t displayInvert;    // 1 = invert panel colours (many IPS modules need it)
   uint8_t displayFlip;      // 1 = rotate the display content by 180 degrees
+
+  // --- added in settings version 4 ---
+  // Thermal coupling of the room sensor to the radiator in a device mounted on the radiator:
+  // T_measured = T_room + c * (T_radiator - T_room)  ->  corrected out. 0 = off.
+  float roomCoupling;
 };
 
 void setDefaults(Settings& s, uint32_t defaultMeterId);

@@ -280,6 +280,7 @@ Einheiten += Rate · Δt
 Weiteres Verhalten:
 
 - **Emissionsgrad (IR-Sensor):** Der MLX90614 misst ab Werk mit ε = 1,0. Unter *Service → Messung & Bewertung* lässt sich der Emissionsgrad der Heizkörperoberfläche einstellen (lackiert typisch 0,93–0,95). Die Firmware rechnet mit der Gehäusetemperatur des Sensors um: T⁴ = Tₐ⁴ + (Tₘ⁴ − Tₐ⁴)/ε. Das Sensor-EEPROM wird nicht verändert.
+- **Kopplung des Raumfühlers:** Der Raumfühler sitzt im Gerät am Heizkörper und wird von dessen Wärme mitgezogen. Die Einstellung *Kopplung Raumfühler c* (*Service → Messung & Bewertung → Erweitert*) rechnet das heraus: T_Raum = (T_gemessen − c · T_HK) / (1 − c). Die Kalibrierhilfe ermittelt c aus einer einzigen Thermometer-Ablesung bei warmem Heizkörper. Kommerzielle Zweifühlergeräte berücksichtigen diese Kopplung über ihre im Labor ermittelten Bewertungsfaktoren.
 - **Raumfühler ausgefallen:** Es wird mit 20 °C weitergerechnet (wie bei einem Einfühlergerät), und ein Fehler-Flag wird gesetzt.
 - **Heizkörperfühler ausgefallen:** Es wird nicht gezählt, und ein Fehler-Flag wird gesetzt.
 - **Speicherung:** Zählerstand, Stichtagswert, 18 Monatswerte und die Fehlerhistorie liegen CRC-gesichert im Flash. Bei Änderungen wird höchstens alle 15 min geschrieben, beim Stichtag sofort, sonst mindestens alle 6 h.

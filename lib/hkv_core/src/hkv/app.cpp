@@ -46,7 +46,9 @@ void HkvApp::begin(uint32_t defaultMeterId) {
       uint16_t version;
       size_t size;
     };
-    const OldVersion olds[] = {{2, offsetof(Settings, displayInvert)}, {1, offsetof(Settings, emissivity)}};
+    const OldVersion olds[] = {{3, offsetof(Settings, roomCoupling)},
+                               {2, offsetof(Settings, displayInvert)},
+                               {1, offsetof(Settings, emissivity)}};
     for (const OldVersion& o : olds) {
       Settings old;
       setDefaults(old, defaultMeterId);

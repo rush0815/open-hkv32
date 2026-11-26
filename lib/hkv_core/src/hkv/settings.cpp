@@ -43,6 +43,7 @@ void setDefaults(Settings& s, uint32_t defaultMeterId) {
   s.emissivity = 1.0f;
   s.displayInvert = 1;
   s.displayFlip = 0;
+  s.roomCoupling = 0.0f;
 }
 
 static bool inRange(float v, float lo, float hi) { return v >= lo && v <= hi; }
@@ -78,6 +79,7 @@ const char* validate(const Settings& s) {
   if (s.displayTimeoutS < 3 || s.displayTimeoutS > 600) return "display timeout 3..600 s";
   if (!inRange(s.emissivity, 0.10f, 1.0f)) return "emissivity must be 0.10..1.00";
   if (s.displayInvert > 1 || s.displayFlip > 1) return "display options must be 0 or 1";
+  if (!inRange(s.roomCoupling, 0.0f, 0.8f)) return "room sensor coupling must be 0..0.8";
   return nullptr;
 }
 

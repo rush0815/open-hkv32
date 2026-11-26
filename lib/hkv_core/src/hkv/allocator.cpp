@@ -13,6 +13,19 @@ float correctEmissivity(float tMeasC, float tAmbC, float emissivity) {
   return sqrtf(sqrtf(to4)) - 273.15f;
 }
 
+float correctRoomCoupling(float measuredRoomC, float radiatorC, float coupling) {
+  if (!(coupling > 0.0f) || coupling >= 0.95f) return measuredRoomC;
+  return (measuredRoomC - coupling * radiatorC) / (1.0f - coupling);
+}
+
+float couplingFromReference(float measuredRoomC, float radiatorC, float referenceRoomC) {
+  const float span = radiatorC - referenceRoomC;
+  if (span < 5.0f) return -1.0f;
+  float c = (measuredRoomC - referenceRoomC) / span;
+  if (c < 0.0f) c = 0.0f;
+  return c;
+}
+
 const char* countStateName(CountState s) {
   switch (s) {
     case CountState::Idle: return "idle";
@@ -31,7 +44,7 @@ AllocResult evaluate(const Settings& s, const TempReading& radiator, const TempR
   }
   r.radiatorC = radiator.celsius + s.radiatorOffsetC;
   if (room.valid && !isnan(room.celsius)) {
-    r.roomC = room.celsius + s.roomOffsetC;
+    r.roomC = correctRoomCoupling(room.celsius + s.roomOffsetC, r.radiatorC, s.roomCoupling);
   } else {
     r.roomC = kFallbackRoomC;
     r.roomFallback = true;
