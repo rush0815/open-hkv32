@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>HKV</title>
+<style>
+:root{--bg:#0b0f14;--card:#141a22;--card2:#1b232e;--line:#243140;--txt:#e8eef5;--mut:#8a98aa;--acc:#3c96e6;--acc2:#5aaaf0;--ok:#4cc96b;--warn:#f0a020;--err:#e5534b;--r:16px;--sh:0 1px 2px rgba(0,0,0,.25)}
+@media (prefers-color-scheme:light){:root{--bg:#eef2f7;--card:#fff;--card2:#f4f7fb;--line:#dfe6ee;--txt:#18212c;--mut:#627287;--sh:0 1px 3px rgba(20,40,70,.08)}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--txt)}
+svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+header{position:sticky;top:0;z-index:10;background:var(--card);box-shadow:var(--sh);border-bottom:2px solid var(--acc)}
+.bar{max-width:1040px;margin:auto;display:flex;align-items:center;gap:12px;padding:10px 16px 6px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:.02em}
+.brand svg{width:24px;height:24px;color:var(--acc)}
+.brand small{display:block;font-weight:500;font-size:12px;color:var(--mut);letter-spacing:0}
+.chips{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.chip{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:var(--card2);color:var(--mut);font-size:13px;font-weight:600;white-space:nowrap}
+.chip svg{width:15px;height:15px}
+.chip.ok{color:var(--ok)}.chip.warn{color:var(--warn)}.chip.err{color:var(--err)}.chip.acc{color:var(--acc2)}
+nav{max-width:1040px;margin:auto;display:flex;gap:2px;padding:0 10px}
+nav a{display:flex;align-items:center;gap:7px;padding:9px 14px 10px;color:var(--mut);text-decoration:none;font-weight:650;border-bottom:3px solid transparent;margin-bottom:-2px}
+nav a.on{color:var(--txt);border-color:var(--acc)}
+main{max-width:1040px;margin:auto;padding:16px 14px 90px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;box-shadow:var(--sh);min-width:0}
+.card h2{margin:0 0 14px;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);display:flex;align-items:center;gap:8px;font-weight:700}
+.card h2 svg{color:var(--acc)}
+.wide{grid-column:1/-1}
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.mrow .hint{display:block;margin-top:2px}
+.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.big{font-size:52px;font-weight:800;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.big small{font-size:18px;color:var(--mut);font-weight:700;margin-left:6px;letter-spacing:0}
+.sub{color:var(--mut);font-size:13.5px;margin-top:8px;display:flex;align-items:center;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:99px;font-weight:700;font-size:13.5px;background:var(--card2);color:var(--mut)}
+.pill i{width:9px;height:9px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.err{color:var(--err)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.tile{background:var(--card2);border-radius:12px;padding:11px 13px;min-width:0}
+.tile span{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:12.5px;font-weight:600}
+.tile b{display:block;font-size:23px;margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tile b small{font-size:13px;color:var(--mut);margin-left:3px}
+.tile.hot span svg{color:var(--err)}.tile.cold span svg{color:var(--acc)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;margin:0}
+.kv dt{color:var(--mut)}.kv dd{margin:0;text-align:right;font-weight:600;overflow-wrap:anywhere}
+.meter{height:9px;border-radius:9px;background:var(--card2);overflow:hidden;margin:8px 0 14px}
+.meter i{display:block;height:100%;border-radius:9px;background:var(--ok);transition:width .4s}
+.chart{width:100%;height:170px;display:block}
+.chart text{fill:var(--mut);font-size:10px}
+.empty{color:var(--mut);text-align:center;padding:28px 0}
+code.tg{display:block;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card2);padding:12px;border-radius:10px;word-break:break-all;color:var(--txt)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.hint{color:var(--mut);font-size:13px;margin:6px 0 0}
+.banner{display:flex;gap:12px;align-items:center;background:linear-gradient(90deg,rgba(60,150,230,.18),rgba(60,150,230,.04));border:1px solid rgba(60,150,230,.45);border-radius:var(--r);padding:14px 16px;margin-bottom:14px}
+.banner svg{width:28px;height:28px;color:var(--acc2)}
+.banner b{display:block}
+.banner.warn{background:linear-gradient(90deg,rgba(240,160,32,.18),rgba(240,160,32,.04));border-color:rgba(240,160,32,.5)}.banner.warn svg{color:var(--warn)}
+button,.btn{font:inherit;font-weight:650;border:1px solid var(--line);background:var(--card2);color:var(--txt);padding:10px 16px;border-radius:11px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.pri:hover{background:var(--acc2)}
+button.danger{color:var(--err)}
+button:disabled{opacity:.5;cursor:default}
+button svg{width:16px;height:16px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 5px;font-weight:600}
+input,select{width:100%;padding:11px 12px;border-radius:11px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font:inherit}
+input:focus,select:focus{outline:2px solid var(--acc);outline-offset:-1px;border-color:transparent}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 12px}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 0;color:var(--txt);font-size:15px;font-weight:600;cursor:pointer}
+.sw span{flex:1;min-width:0}.sw small{display:block;color:var(--mut);font-weight:400;font-size:12.5px;margin-top:1px}
+.sw input{appearance:none;-webkit-appearance:none;width:46px;height:27px;border-radius:99px;background:var(--line);position:relative;flex:none;padding:0;border:0;cursor:pointer;transition:background .2s}
+.sw input::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.sw input:checked{background:var(--acc)}.sw input:checked::after{left:22px}
+.pw{position:relative}.pw button{position:absolute;right:5px;top:5px;padding:6px 9px;border:0;background:none;color:var(--mut)}
+.nets{margin-top:8px;border:1px solid var(--line);border-radius:11px;overflow:hidden;max-height:260px;overflow-y:auto}
+.nets div{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--line)}
+.nets div:last-child{border-bottom:0}
+.nets div:hover,.nets div.sel{background:var(--card2)}
+.nets div span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nets div em{color:var(--mut);font-style:normal;font-size:12.5px}
+.sig{display:inline-flex;gap:2px;align-items:flex-end;height:14px}.sig i{width:3px;background:var(--line);border-radius:1px}.sig i.on{background:var(--acc2)}
+details{margin-top:14px;border-top:1px solid var(--line);padding-top:6px}
+summary{cursor:pointer;color:var(--acc2);font-weight:650;padding:6px 0;list-style:none;display:flex;align-items:center;gap:6px}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"›";display:inline-block;transition:transform .2s;font-size:18px;line-height:1}
+details[open] summary::before{transform:rotate(90deg)}
+.savebar{position:fixed;left:0;right:0;bottom:0;z-index:9;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(0,0,0,.15);transform:translateY(110%);transition:transform .25s}
+.savebar.show{transform:none}
+.savebar div{max-width:1040px;margin:auto;padding:11px 16px;display:flex;gap:10px;align-items:center;justify-content:flex-end}
+.savebar span{margin-right:auto;color:var(--mut)}
+.toast{position:fixed;left:50%;bottom:84px;transform:translate(-50%,20px);opacity:0;pointer-events:none;transition:.25s;background:var(--txt);color:var(--bg);padding:11px 18px;border-radius:12px;font-weight:600;z-index:20;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.err{background:var(--err);color:#fff}
+.overlay{position:fixed;inset:0;background:rgba(5,10,16,.82);display:none;align-items:center;justify-content:center;z-index:30;padding:20px}
+.overlay.show{display:flex}
+.overlay .card{max-width:420px;text-align:center}
+.spin{width:44px;height:44px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--acc);animation:sp 1s linear infinite;margin:6px auto 14px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.mrow{display:grid;grid-template-columns:1fr auto auto;gap:6px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.mrow b{display:block}
+.mrow .hint{margin:0}
+.mval{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.mval small{color:var(--mut);font-weight:600;margin-left:3px}
+.mval.none{color:var(--mut);font-weight:400}
+.mrow.cur{padding-top:0}
+.mrow.cur .mval{font-size:24px}
+.offbox{padding:12px 0 14px;border-bottom:1px solid var(--line)}
+.offbox .row{margin-top:8px}
+.sub3{margin:18px 0 0;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
+.sub3 span{text-transform:none;letter-spacing:0;font-weight:500}
+button.icon{padding:8px 10px}
+button.danger:hover{border-color:var(--err)}
+button.arm{background:var(--err)!important;border-color:var(--err)!important;color:#fff!important}
+.ghost{visibility:hidden}
+.livecard{cursor:pointer;user-select:none;-webkit-user-select:none;transition:transform .12s,box-shadow .2s,border-color .2s;-webkit-tap-highlight-color:transparent}
+.livecard:hover{border-color:var(--acc)}
+.livecard:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.livecard.on{border-color:var(--ok);transform:translateY(2px);box-shadow:inset 0 3px 10px rgba(0,0,0,.35),0 0 0 3px rgba(76,201,107,.16)}
+.livecard.on .tile{background:rgba(76,201,107,.07)}
+.lv{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:var(--card2);color:var(--mut);font-size:11px;letter-spacing:.1em}
+.lv i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.livecard.on .lv{color:var(--ok);background:rgba(76,201,107,.15)}
+.livecard.on .lv i{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.2}}
+.livehint{margin:12px 0 0;color:var(--mut);font-size:12.5px}
+.livecard.on .livehint{color:var(--ok)}
+.tile b.upd{animation:upd .6s}
+@keyframes upd{from{color:var(--ok)}}
+[hidden]{display:none!important}
+@media (max-width:560px){.grid.two{grid-template-columns:1fr}nav a svg{display:none}nav a{padding:9px 8px 10px}nav{padding:0 4px}nav a{padding:9px 9px 10px;gap:5px;font-size:14.5px}.mrow.cur{grid-template-columns:1fr auto}.mrow.cur button{grid-column:1/-1;justify-content:center}.big{font-size:44px}.f3{grid-template-columns:1fr 1fr}.bar{flex-wrap:wrap}.chips{margin-left:0;justify-content:flex-start;width:100%}}
+</style>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0120 0"/><path d="M5 12a10 10 0 0114 0"/><path d="M8.5 15.5a5 5 0 017 0"/><circle cx="12" cy="19" r="1"/></symbol>
+<symbol id="i-bat" viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/></symbol>
+<symbol id="i-therm" viewBox="0 0 24 24"><path d="M14 14.8V4a2 2 0 00-4 0v10.8a4 4 0 104 0z"/></symbol>
+<symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/></symbol>
+<symbol id="i-gauge" viewBox="0 0 24 24"><path d="M12 14l4-4"/><path d="M3.3 17a10 10 0 1117.4 0"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></symbol>
+<symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+<symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+<symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 16.2a6 6 0 010-8.4M16.2 7.8a6 6 0 010 8.4M4.9 19.1a10 10 0 010-14.2M19.1 4.9a10 10 0 010 14.2"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></symbol>
+<symbol id="i-cloud" viewBox="0 0 24 24"><path d="M18 10h-1.3A8 8 0 109 20h9a5 5 0 000-10z"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></symbol>
+<symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+</svg>
+
+<header>
+  <div class="bar">
+    <div class="brand"><svg><use href="#i-home"/></svg><div>HKV<small id="hid">Heizkostenverteiler</small></div></div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <nav>
+    <a href="#status" id="t-status"><svg><use href="#i-chart"/></svg>Übersicht</a>
+    <a href="#meter" id="t-meter"><svg><use href="#i-cal"/></svg>Zähler</a>
+    <a href="#setup" id="t-setup"><svg><use href="#i-gear"/></svg>Einrichtung</a>
+    <a href="#service" id="t-service"><svg><use href="#i-tool"/></svg>Service</a>
+  </nav>
+</header>
+
+<main>
+  <div id="banner"></div>
+
+  <section id="v-status" class="grid">
+    <div class="card wide">
+      <h2><svg><use href="#i-chart"/></svg>Verbrauch aktuelle Periode</h2>
+      <div class="hero">
+        <div>
+          <div class="big" id="units">–<small>VE</small></div>
+          <div class="sub"><svg><use href="#i-cal"/></svg><span id="since">–</span></div>
+        </div>
+        <div style="text-align:right">
+          <span class="pill" id="state"><i></i>–</span>
+          <div class="sub" style="justify-content:flex-end" id="rate">–</div>
+        </div>
+      </div>
+      <div class="split">
+        <div class="tile"><span>Vorperiode</span><b id="due">–</b><div class="hint" id="duedate"></div></div>
+        <div class="tile"><span>Seit Inbetriebnahme</span><b id="life">–</b><div class="hint" id="meas"></div></div>
+      </div>
+    </div>
+
+    <div class="card livecard" id="tempcard" role="button" tabindex="0" aria-pressed="false" title="Live-Messung ein/aus">
+      <h2><svg><use href="#i-therm"/></svg>Temperaturen<span class="lv"><i></i>LIVE</span></h2>
+      <div class="split" style="margin-top:0">
+        <div class="tile hot"><span><svg><use href="#i-therm"/></svg>Heizkörper</span><b id="trad">–</b></div>
+        <div class="tile cold"><span><svg><use href="#i-therm"/></svg>Raum</span><b id="troom">–</b></div>
+        <div class="tile"><span>ΔT</span><b id="dt">–</b></div>
+        <div class="tile cold"><span id="xlbl"><svg><use href="#i-gauge"/></svg>Luftdruck</span><b id="xval">–</b></div>
+      </div>
+      <p class="livehint" id="livehint">Antippen für Live-Messung (alle 2 s)</p>
+    </div>
+
+    <div class="card">
+      <h2><svg><use href="#i-bat"/></svg>Akku &amp; Gerät</h2>
+      <dl class="kv"><dt>Akkustand</dt><dd id="batpct">–</dd></dl>
+      <div class="meter"><i id="batbar" style="width:0"></i></div>
+      <dl class="kv">
+        <dt>Spannung</dt><dd id="batmv">–</dd>
+        <dt>Uhrzeit</dt><dd id="time">–</dd>
+        <dt>Laufzeit</dt><dd id="uptime">–</dd>
+        <dt>Status</dt><dd id="errs">–</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2><svg><use href="#i-wifi"/></svg>Verbindung</h2>
+      <dl class="kv">
+        <dt>WLAN</dt><dd id="wssid">–</dd>
+        <dt>IP-Adresse</dt><dd id="wip">–</dd>
+        <dt>Signal</dt><dd id="wrssi">–</dd>
+        <dt>MQTT</dt><dd id="mqtt">–</dd>
+        <dt>Firmware</dt><dd id="fw">–</dd>
+        <dt>MAC</dt><dd id="mac">–</dd>
+      </dl>
+    </div>
+
+    <div class="card wide">
+      <h2><svg><use href="#i-cal"/></svg>Monatswerte</h2>
+      <div id="chart"></div>
+    </div>
+  </section>
+
+  <form id="cfg" autocomplete="off">
+    <section id="v-setup" class="grid" hidden>
+      <div class="card">
+        <h2><svg><use href="#i-wifi"/></svg>WLAN</h2>
+        <label class="sw"><span>WLAN-Verbindung<small>Verbindet das Gerät mit dem Heimnetz (erhöht den Stromverbrauch)</small></span><input type="checkbox" name="wifi"></label>
+        <label for="ssid">Netzwerk</label>
+        <div style="display:flex;gap:8px"><input id="ssid" name="ssid" maxlength="32" placeholder="SSID"><button type="button" id="scan" title="Netzwerke suchen"><svg><use href="#i-refresh"/></svg></button></div>
+        <div class="nets" id="nets" hidden></div>
+        <label for="pass">Passwort</label>
+        <div class="pw"><input id="pass" name="pass" type="password" maxlength="64" autocomplete="new-password"><button type="button" data-eye="pass"><svg><use href="#i-eye"/></svg></button></div>
+        <p class="hint" id="passhint"></p>
+        <details>
+          <summary>Erweitert</summary>
+          <div class="f2">
+            <div><label>Hostname</label><input name="host" maxlength="24"></div>
+            <div><label>NTP-Server</label><input name="ntp" maxlength="48"></div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2><svg><use href="#i-cloud"/></svg>MQTT</h2>
+        <label class="sw"><span>MQTT aktiv<small>Messwerte nach jeder Messung an einen Broker senden</small></span><input type="checkbox" name="mqtt"></label>
+        <div class="f2" style="grid-template-columns:2fr 1fr">
+          <div><label>Broker</label><input name="mhost" maxlength="64" placeholder="z. B. 192.168.178.10"></div>
+          <div><label>Port</label><input name="mport" type="number" min="1" max="65535"></div>
+        </div>
+        <div class="f2">
+          <div><label>Benutzer</label><input name="muser" maxlength="32"></div>
+          <div><label>Passwort</label><input name="mpass" type="password" maxlength="64" autocomplete="new-password"></div>
+        </div>
+        <label>Basis-Topic</label><input name="mtopic" maxlength="48">
+        <label class="sw"><span>Home-Assistant-Discovery<small>Sensoren automatisch in Home Assistant anlegen</small></span><input type="checkbox" name="mdisc"></label>
+      </div>
+
+      <div class="card">
+        <h2><svg><use href="#i-clock"/></svg>Zeit &amp; Abrechnung</h2>
+        <dl class="kv"><dt>Geräteuhr</dt><dd id="devtime">–</dd></dl>
+        <div class="row"><button type="button" id="settime"><svg><use href="#i-clock"/></svg>Uhrzeit vom Handy/PC übernehmen</button></div>
+        <p class="hint">Mit WLAN-Verbindung stellt sich die Uhr automatisch per NTP.</p>
+        <div class="f2">
+          <div><label>Stichtag Tag</label><input name="dueD" type="number" min="1" max="31"></div>
+          <div><label>Stichtag Monat</label><input name="dueM" type="number" min="1" max="12"></div>
+        </div>
+        <div class="f2">
+          <div><label>UTC-Offset (Minuten)</label><input name="utco" type="number" step="15"></div>
+          <div><label class="sw" style="margin-top:34px"><span>Sommerzeit (EU)</span><input type="checkbox" name="dst"></label></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><svg><use href="#i-lock"/></svg>Web-Zugang <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></h2>
+        <p class="hint" id="adminhint" style="margin-top:0"></p>
+        <label>Neues Web-Passwort</label>
+        <div class="pw"><input id="admin" name="admin" type="password" maxlength="32" autocomplete="new-password" placeholder="mind. 8 Zeichen"><button type="button" data-eye="admin"><svg><use href="#i-eye"/></svg></button></div>
+        <label class="sw" id="noadminrow" hidden><span>Web-Passwort entfernen</span><input type="checkbox" name="noadmin"></label>
+        <p class="hint">Im Einrichtungsmodus (Taster 3 s halten) wird nie ein Login verlangt.</p>
+      </div>
+    </section>
+
+    <section id="v-meter" class="grid" hidden>
+      <div class="card wide">
+        <h2><svg><use href="#i-cal"/></svg>Zählerstände</h2>
+        <div class="mrow cur">
+          <div><b>Aktuelle Periode</b><span class="hint" id="s-since">–</span></div>
+          <div class="mval" id="s-cur">–</div>
+          <button type="button" class="danger" id="resetcur" title="Aktuellen Zählerstand auf 0 setzen"><svg><use href="#i-refresh"/></svg>Zurücksetzen</button>
+        </div>
+        <div class="mrow">
+          <div><b>Seit Inbetriebnahme</b><span class="hint">Gesamtzähler über alle Perioden – bleibt beim Zurücksetzen der Periode und am Stichtag erhalten</span></div>
+          <div class="mval" id="s-life">–</div>
+          <button type="button" class="danger" id="resetlife" title="Gesamtzähler auf 0 setzen"><svg><use href="#i-refresh"/></svg>Zurücksetzen</button>
+        </div>
+        <div class="offbox">
+          <div>
+            <b>Zähler-Offset</b>
+            <p class="hint">Wird zum aktuellen Zählerstand addiert, z.&nbsp;B. der Stand des alten Geräts nach einem Austausch. Ein neuer Wert ersetzt den alten, 0 entfernt den Offset. Am Stichtag geht der Offset im Stichtagswert auf.</p>
+            <p class="hint" id="s-offinfo"></p>
+          </div>
+          <div class="row"><input id="offval" inputmode="decimal" placeholder="z. B. 57,3" style="max-width:150px"><span class="hint" style="margin:0">VE</span><button type="button" class="pri" id="offset">Übernehmen</button></div>
+        </div>
+        <h3 class="sub3">Vergangene 12 Monate <span>Stand am Monatsende</span></h3>
+        <div id="mlist"></div>
+      </div>
+    </section>
+
+    <section id="v-service" class="grid two" hidden>
+      <div class="card wide">
+        <h2><svg><use href="#i-therm"/></svg>Messung &amp; Bewertung</h2>
+        <label>Zählernummer</label><input name="meterId" type="number" min="0" max="99999999">
+        <label>Skala</label><select name="scale"><option value="0">Einheitsskala</option><option value="1">Produktskala (mit Heizkörperleistung)</option></select>
+        <div class="f2">
+          <div><label>Kc (Wärmeübergang)</label><input name="kc" type="number" step="any"></div>
+          <div><label>Kq (kW, Produktskala)</label><input name="kq" type="number" step="any"></div>
+        </div>
+        <label>Emissionsgrad Heizkörper (IR-Sensor)</label>
+        <input name="emis" type="number" step="0.01" min="0.10" max="1.00">
+        <p class="hint">1,00 = keine Korrektur. Lackierte Heizkörper liegen typisch bei 0,93–0,95, blankes Metall deutlich darunter (für IR ungeeignet). Wird mit der Gehäusetemperatur des Sensors umgerechnet; der Sensor selbst bleibt unverändert.</p>
+        <details>
+          <summary>Erweitert</summary>
+          <div class="f3">
+            <div><label>Exponent n</label><input name="exp" type="number" step="any"></div>
+            <div><label>dTn (K)</label><input name="dtn" type="number" step="any"></div>
+            <div><label>Start ab dT (K)</label><input name="dts" type="number" step="any"></div>
+            <div><label>Start ab T<sub>HK</sub> (°C)</label><input name="tmin" type="number" step="any"></div>
+            <div><label>Sommer ab (°C)</label><input name="tsum" type="number" step="any"></div>
+            <div><label>Sommer Monate</label><div style="display:flex;gap:6px"><input name="sumS" type="number" min="0" max="12"><input name="sumE" type="number" min="0" max="12"></div></div>
+            <div><label>Offset HK (K)</label><input name="offR" type="number" step="any"></div>
+            <div><label>Offset Raum (K)</label><input name="offA" type="number" step="any"></div>
+            <div><label>Akku schwach (mV)</label><input name="batlow" type="number"></div>
+          </div>
+        </details>
+      </div>
+      <div class="card wide">
+        <h2><svg><use href="#i-clock"/></svg>Intervalle</h2>
+        <div class="f2">
+          <div>
+            <label>Messintervall (Sekunden)</label>
+            <input name="mint" type="number" min="10" max="3600">
+            <p class="hint">Wie oft Temperaturen gemessen und Einheiten gezählt werden (10–3600 s, Standard 120).</p>
+          </div>
+          <div>
+            <label>Übertragung per WLAN (MQTT)</label>
+            <input name="xfer" id="xfer" maxlength="150" spellcheck="false" placeholder="15  oder  06:00 12:00 18:00 00:00">
+            <p class="hint" id="xferhint">Eine Zahl = Intervall in Minuten. Uhrzeiten hh:mm = feste Zeiten am Tag.</p>
+          </div>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span class="hint" id="xferstat" style="margin:0"></span>
+          <button type="button" id="publish"><svg><use href="#i-cloud"/></svg>Jetzt übertragen</button>
+        </div>
+      </div>
+      <div class="card wide">
+        <h2><svg><use href="#i-bat"/></svg>Energie</h2>
+        <div class="f2">
+          <div>
+            <label>WLAN-Betrieb</label>
+            <select name="wmode">
+              <option value="0">Immer an – Weboberfläche jederzeit erreichbar</option>
+              <option value="1">Nur zur Übertragung – WLAN nach Zeitplan kurz an</option>
+              <option value="2">Aus – nur per WLAN-Taste</option>
+            </select>
+            <p class="hint">Im sparsamen Betrieb ist die Weboberfläche nur erreichbar, solange das WLAN an ist: kurz bei jeder Übertragung oder nach Druck auf die <b>WLAN-Taste (GPIO 14)</b> für die Wachzeit. Die Uhrzeit wird dabei jeweils per NTP nachgestellt.</p>
+          </div>
+          <div>
+            <label>Wachzeit nach WLAN-Taste (Minuten)</label>
+            <input name="wake" type="number" min="1" max="240">
+            <label>Modem-Sleep bei aktivem WLAN</label>
+            <select name="wps">
+              <option value="0">Aus – schnellste Reaktion, höchster Verbrauch</option>
+              <option value="1">Normal (Standard)</option>
+              <option value="2">Maximal – sparsamer, Weboberfläche träger</option>
+            </select>
+          </div>
+        </div>
+        <div class="f2">
+          <div>
+            <label>CPU-Takt</label>
+            <select name="cpu">
+              <option value="240">240 MHz</option>
+              <option value="160">160 MHz</option>
+              <option value="80">80 MHz – sparsam (Minimum mit WLAN)</option>
+            </select>
+          </div>
+          <div>
+            <label class="sw" style="margin-top:34px"><span>Light-Sleep<small>Zwischen den Messungen schlafen, solange WLAN und Display aus sind (~0,8 mA)</small></span><input type="checkbox" name="lsleep"></label>
+          </div>
+        </div>
+        <p class="hint" id="pwrstat" style="margin-top:12px"></p>
+      </div>
+      <div class="card wide">
+        <h2><svg><use href="#i-radio"/></svg>OMS / wireless M-Bus</h2>
+        <div class="f2">
+          <div><label>Hersteller</label><input name="mfct" maxlength="3" style="text-transform:uppercase"></div>
+          <div><label>Version</label><input name="ver" type="number" min="0" max="255"></div>
+        </div>
+        <p class="hint">„XXX“ ist ein Platzhalter – für echten Funkbetrieb wird eine eigene FLAG-Kennung benötigt.</p>
+        <label>Verschlüsselung</label><select name="sec"><option value="0">Mode 0 – unverschlüsselt (nur Entwicklung)</option><option value="5">Mode 5 – AES-128-CBC</option></select>
+        <label>Funk-Sendeintervall (s)</label><input name="tint" type="number">
+        <label>AES-Schlüssel (32 Hex-Zeichen)</label><input name="key" maxlength="32" spellcheck="false" style="font-family:ui-monospace,monospace">
+        <p class="hint" id="keyhint"></p>
+      </div>
+      <div class="card">
+        <h2><svg><use href="#i-chip"/></svg>Display</h2>
+        <label class="sw" style="margin-top:0"><span>Farben invertieren<small>Viele IPS-Module zeigen sonst einen weißen statt schwarzen Hintergrund</small></span><input type="checkbox" name="dinv"></label>
+        <label class="sw"><span>Um 180° drehen<small>Falls das Display auf dem Kopf eingebaut ist</small></span><input type="checkbox" name="dflip"></label>
+        <label>Display aus nach (Sekunden)</label><input name="dto" type="number" min="3" max="600">
+      </div>
+      <div class="card">
+        <h2><svg><use href="#i-radio"/></svg>OMS-Telegramm</h2>
+        <label style="margin-top:0">Letztes Telegramm</label>
+        <code class="tg" id="tg">–</code>
+        <div class="row">
+          <button type="button" id="copy"><svg><use href="#i-copy"/></svg>Kopieren</button>
+          <button type="button" data-act="telegram"><svg><use href="#i-radio"/></svg>Telegramm senden</button>
+        </div>
+        <p class="hint">Dekodieren mit <b>wmbusmeters --analyze &lt;hex&gt;</b> (Mode 5: <b>--analyze=&lt;Schlüssel&gt;</b>).</p>
+      </div>
+      <div class="card wide">
+        <h2><svg><use href="#i-refresh"/></svg>System</h2>
+        <div class="mrow">
+          <div><b>Neustart</b><span class="hint">Startet das Gerät neu. Einstellungen und Zählerstände bleiben erhalten.</span></div>
+          <span></span>
+          <button type="button" data-act="reboot"><svg><use href="#i-refresh"/></svg>Neustart</button>
+        </div>
+        <div class="mrow" style="border-bottom:0">
+          <div><b>Werkseinstellungen</b><span class="hint">Löscht <strong>alle</strong> Einstellungen, WLAN- und MQTT-Zugang sowie alle Zählerstände. Danach startet das Gerät im Einrichtungsmodus mit einem neuen WLAN-Passwort (siehe Display).</span></div>
+          <span></span>
+          <button type="button" class="danger" id="factory"><svg><use href="#i-alert"/></svg>Zurücksetzen</button>
+        </div>
+      </div>
+    </section>
+  </form>
+</main>
+
+<div class="savebar" id="savebar"><div><span>Ungespeicherte Änderungen</span><button type="button" id="discard">Verwerfen</button><button type="button" class="pri" id="save">Speichern</button></div></div>
+<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay"><div class="card"><div class="spin"></div><h3 style="margin:0 0 8px" id="ovt">Neustart …</h3><p class="hint" id="ovm"></p></div></div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const ic=n=>`<svg><use href="#i-${n}"/></svg>`;
+const nf=(v,d=1)=>v==null||isNaN(v)?"–":Number(v).toLocaleString("de-DE",{minimumFractionDigits:d,maximumFractionDigits:d});
+const dmy=s=>s?s.slice(0,10).split("-").reverse().join("."):"–";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let S=null,C=null,dirty=false,timer=null;
+
+async function api(url,opt){
+  // Never wait forever (lost answer, WiFi switched off, device restarting ...).
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),15000);
+  let r,t;
+  try{r=await fetch(url,{...(opt||{}),signal:ctl.signal});t=await r.text()}
+  catch(e){throw new Error(e.name=="AbortError"?"Keine Antwort vom Gerät (Zeitüberschreitung)":"Gerät nicht erreichbar")}
+  finally{clearTimeout(tm)}
+  let j;
+  try{j=JSON.parse(t)}catch(e){throw new Error(r.status==401?"Anmeldung erforderlich":(t||("HTTP "+r.status)))}
+  if(!r.ok&&!j.error)j.error="HTTP "+r.status;return j;
+}
+function post(url,data){return api(url,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams(data)})}
+function toast(msg,err){const t=$("#toast");t.textContent=msg;t.className="toast show"+(err?" err":"");clearTimeout(t._h);t._h=setTimeout(()=>t.className="toast",3200)}
+
+const ERR={1:"Heizkörperfühler",2:"Raumfühler",4:"Akku schwach",8:"Uhrzeit nicht gesetzt",16:"Speicherfehler"};
+const STATE={counting:["Zählt","ok"],idle:["Ruhe",""],summer:["Sommer – gesperrt","warn"],sensor_error:["Fühlerfehler","err"]};
+function bars(rssi){const l=rssi>=-55?4:rssi>=-65?3:rssi>=-75?2:1;return `<span class="sig">${[5,8,11,14].map((h,i)=>`<i style="height:${h}px" class="${i<l?"on":""}"></i>`).join("")}</span>`}
+
+function renderStatus(){
+  const s=S;if(!s)return;
+  $("#hid").textContent="Zähler "+s.id;
+  // chips
+  const w=s.wifi||{};let chips="";
+  const wm={connected:["acc",w.ssid],ap:["warn","Einrichtung"],connecting:["warn","verbinde …"],failed:["err","Fehler"],off:["","WLAN aus"]}[w.mode]||["",""];
+  chips+=`<span class="chip ${wm[0]}">${ic("wifi")}${esc(wm[1])}</span>`;
+  if(s.battery_valid)chips+=`<span class="chip ${s.errors&4?"warn":"ok"}">${ic("bat")}${s.battery_pct} %</span>`;
+  chips+=`<span class="chip ${s.errors&~8?"err":"ok"}">${s.errors&~8?ic("alert")+"Fehler":"● OK"}</span>`;
+  $("#chips").innerHTML=chips;
+  // banner
+  let b="";
+  if(w.mode=="ap")b=`<div class="banner">${ic("wifi")}<div><b>Einrichtungsmodus</b>Verbinde das Gerät mit deinem WLAN – unter <a href="#setup" style="color:var(--acc2)">Einrichtung</a>.</div></div>`;
+  else if(!s.local_time)b=`<div class="banner warn">${ic("clock")}<div><b>Uhrzeit nicht gesetzt</b>Stichtag und Monatswerte laufen erst mit gültiger Uhrzeit. <a href="#setup" style="color:var(--warn)">Jetzt stellen</a></div></div>`;
+  $("#banner").innerHTML=b;
+  // consumption
+  $("#units").innerHTML=`${nf(Math.floor(s.units*10)/10)}<small>VE</small>`;
+  $("#since").textContent=s.period_start?"Periode seit "+dmy(s.period_start):"Periodenbeginn unbekannt (Uhrzeit fehlt)";
+  const st=STATE[s.state]||[s.state,""];$("#state").className="pill "+st[1];$("#state").innerHTML=`<i></i>${st[0]}`;
+  $("#rate").textContent=nf(s.rate_units_h,2)+" VE/h";
+  $("#due").innerHTML=s.units_due_date==null?"–":`${nf(Math.floor(s.units_due_date*10)/10)}<small>VE</small>`;
+  $("#duedate").textContent=s.due_date?"Stichtag "+dmy(s.due_date):"noch kein Stichtag erreicht";
+  $("#life").innerHTML=`${nf(Math.floor(s.units_lifetime*10)/10)}<small>VE</small>`;
+  $("#meas").textContent=(s.measurements_total??s.measurements)+" Messungen";
+  if(!live)renderTemps(s,false);
+  // battery & device
+  $("#batpct").textContent=s.battery_valid?s.battery_pct+" %"+(s.charging?" · lädt":""):"keine Batterie";
+  const bb=$("#batbar");bb.style.width=(s.battery_valid?s.battery_pct:0)+"%";bb.style.background=s.errors&4?"var(--warn)":"var(--ok)";
+  $("#batmv").textContent=s.battery_valid?nf(s.battery_mv/1000,2)+" V":"–";
+  $("#time").textContent=s.local_time?dmy(s.local_time)+" "+s.local_time.slice(11,16):"nicht gesetzt";
+  const u=s.uptime_s;$("#uptime").textContent=u>=86400?Math.floor(u/86400)+" d "+Math.floor(u%86400/3600)+" h":u>=3600?Math.floor(u/3600)+" h "+Math.floor(u%3600/60)+" min":Math.floor(u/60)+" min";
+  const el=Object.keys(ERR).filter(k=>s.errors&k).map(k=>ERR[k]);
+  $("#errs").innerHTML=el.length?`<span style="color:var(--${s.errors&~8?"err":"warn"})">${el.join(", ")}</span>`:`<span style="color:var(--ok)">alles in Ordnung</span>`;
+  // connection
+  $("#wssid").textContent=w.mode=="connected"?w.ssid:w.mode=="ap"?"Einrichtung ("+w.ap_ssid+")":wm[1];
+  $("#wip").textContent=w.ip||(w.mode=="ap"?"192.168.4.1":"–");
+  $("#wrssi").innerHTML=w.mode=="connected"?`${bars(w.rssi)} ${w.rssi} dBm · Kanal ${w.channel}`:"–";
+  $("#mqtt").innerHTML={connected:`<span style="color:var(--ok)">● verbunden</span>`,disconnected:`<span style="color:var(--err)">● getrennt</span>`,disabled:"aus"}[s.mqtt]||"–";
+  $("#fw").textContent=s.fw;$("#mac").textContent=s.mac;
+  $("#tg").textContent=s.telegram||"–";
+  chart(s.monthly||[]);
+  renderMeter();
+  renderXfer();
+  renderPower();
+  if(C)$("#devtime").textContent=$("#time").textContent;
+}
+
+// Temperature tiles; flash = highlight values that changed (live mode)
+function renderTemps(t,flash){
+  const set=(id,html)=>{const el=$(id);if(el.innerHTML!==html){el.innerHTML=html;if(flash){el.classList.remove("upd");void el.offsetWidth;el.classList.add("upd")}}};
+  set("#trad",t.radiator_c==null?"Fehler":`${nf(t.radiator_c)}<small>°C</small>`);
+  set("#troom",t.room_c==null?"Fehler":`${nf(t.room_c)}<small>°C</small>`);
+  set("#dt",`${nf(t.delta_k)}<small>K</small>`);
+  if(t.humidity_pct!=null){$("#xlbl").innerHTML=ic("drop")+"Luftfeuchte";set("#xval",`${nf(t.humidity_pct,0)}<small>%</small>`)}
+  else{$("#xlbl").innerHTML=ic("gauge")+"Luftdruck";set("#xval",t.pressure_hpa==null?"–":`${nf(t.pressure_hpa,0)}<small>hPa</small>`)}
+}
+
+// Live mode: the card works like a latching button. While pressed the device reads the
+// sensors every 2 s for display only - the unit counting is not affected.
+let live=false,liveTimer=null;
+async function liveTick(){try{const l=await api("/api/live");if(live&&l.valid)renderTemps(l,true)}catch(e){}}
+function setLive(on){
+  if(on===live)return;live=on;
+  const c=$("#tempcard");c.classList.toggle("on",on);c.setAttribute("aria-pressed",on);
+  $("#livehint").textContent=on?"Live – neue Werte alle 2 s · antippen zum Beenden":"Antippen für Live-Messung (alle 2 s)";
+  clearInterval(liveTimer);liveTimer=null;
+  if(on){liveTick();liveTimer=setInterval(liveTick,2000)}
+  else{fetch("/api/live?stop=1").catch(()=>{});if(S)renderTemps(S,false)}
+}
+$("#tempcard").onclick=()=>setLive(!live);
+$("#tempcard").onkeydown=e=>{if(e.key==" "||e.key=="Enter"){e.preventDefault();setLive(!live)}};
+document.addEventListener("visibilitychange",()=>{if(document.hidden)setLive(false)});
+
+function chart(m){
+  const el=$("#chart");
+  if(!m.length){el.innerHTML=`<div class="empty">Noch keine Monatswerte – der erste entsteht zum Monatswechsel.</div>`;return}
+  const d=m.slice(0,12).reverse(),W=760,H=170,pad=22,max=Math.max(...d.map(x=>x.units),1);
+  const bw=(W-pad)/d.length;let g="";
+  d.forEach((x,i)=>{const h=(H-44)*x.units/max,X=pad/2+i*bw+bw*.18,Y=H-24-h,w=bw*.64;
+    g+=`<rect x="${X}" y="${Y}" width="${w}" height="${Math.max(h,1)}" rx="5" fill="var(--acc)"/><text x="${X+w/2}" y="${Y-5}" text-anchor="middle">${x.units}</text><text x="${X+w/2}" y="${H-8}" text-anchor="middle">${x.month.slice(5)}/${x.month.slice(2,4)}</text>`});
+  el.innerHTML=`<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="stroke:none">${g}</svg>`;
+}
+
+async function refresh(){try{S=await api("/api/status");renderStatus()}catch(e){}}
+
+// ---------------- setup
+const form=$("#cfg");
+function fill(c){
+  for(const el of form.elements){if(!el.name||!(el.name in c))continue;
+    if(el.type=="checkbox")el.checked=!!c[el.name];else el.value=c[el.name]}
+  form.pass.value="";form.mpass.value="";form.key.value="";form.admin.value="";form.noadmin.checked=false;
+  form.pass.placeholder=c.pass_set?"unverändert lassen":"WLAN-Passwort";
+  form.mpass.placeholder=c.mpass_set?"unverändert":"";
+  $("#passhint").textContent=c.ssid?"Leer lassen, um das gespeicherte Passwort zu behalten.":"";
+  form.key.placeholder=c.key_set?"gesetzt – leer lassen = unverändert":"noch kein Schlüssel";
+  $("#keyhint").textContent="";
+  $("#adminhint").textContent=c.admin_set?"Ein Web-Passwort ist gesetzt (Benutzer „admin“).":"Derzeit ist kein Web-Passwort gesetzt – die Einrichtung ist im Heimnetz ohne Anmeldung erreichbar.";
+  $("#noadminrow").hidden=!c.admin_set;
+  xferHint();
+  setDirty(false);
+}
+async function loadCfg(){try{C=await api("/api/config");fill(C);if(S)$("#devtime").textContent=$("#time").textContent}catch(e){toast(e.message,1)}}
+function setDirty(v){dirty=v;$("#savebar").classList.toggle("show",v)}
+form.addEventListener("input",()=>setDirty(true));
+$("#discard").onclick=()=>C&&fill(C);
+$("#save").onclick=async()=>{
+  const btn=$("#save");btn.disabled=true;
+  try{
+    const xr=parseXfer(form.xfer.value);
+    if(xr.err){toast("Übertragung: "+xr.err,1);location.hash="#service";form.xfer.focus();return}
+    const fd=new FormData(form);fd.set("mfct",(fd.get("mfct")||"").toUpperCase());
+    const r=await post("/api/config",fd);
+    if(!r.ok){toast(r.error||"Fehler",1);return}
+    setDirty(false);
+    if(r.restart){
+      const ap=S&&S.wifi&&S.wifi.mode=="ap";
+      $("#ovt").textContent="Gerät startet neu";
+      $("#ovm").innerHTML=ap?`Es verbindet sich jetzt mit <b>${esc(form.ssid.value)}</b>. Den Fortschritt zeigt das Display.<br><br>Verbinde dich danach wieder mit deinem WLAN und öffne <b>http://${esc(form.host.value)}.local</b> oder die auf dem Display angezeigte IP.`:"Die Seite lädt in ca. 15 Sekunden neu.";
+      $("#overlay").classList.add("show");if(!ap)setTimeout(()=>location.reload(),15000);
+    }else{toast(r.message||"Gespeichert");await loadCfg();refresh()}
+  }catch(e){toast(e.message,1)}finally{btn.disabled=false}
+};
+$("#settime").onclick=async()=>{try{const r=await post("/api/time",{utc:Math.floor(Date.now()/1000)});if(r.ok){toast("Uhrzeit übernommen");refresh()}else toast(r.error,1)}catch(e){toast(e.message,1)}};
+$$("[data-act]").forEach(b=>b.onclick=async()=>{
+  const a=b.dataset.act;
+  try{const r=await post("/api/action",{do:a});
+    if(!r.ok){toast(r.error,1);return}
+    if(a=="reboot"){$("#ovt").textContent="Neustart …";$("#ovm").textContent="Die Seite lädt gleich neu.";$("#overlay").classList.add("show");setTimeout(()=>location.reload(),12000)}
+    else{toast(r.message||"Erledigt");setTimeout(refresh,1500)}
+  }catch(e){toast(e.message,1)}});
+$$("[data-eye]").forEach(b=>b.onclick=()=>{const i=document.getElementById(b.dataset.eye);i.type=i.type=="password"?"text":"password"});
+$("#copy").onclick=()=>{const t=$("#tg").textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("Kopiert"),()=>{const r=document.createRange();r.selectNodeContents($("#tg"));getSelection().removeAllRanges();getSelection().addRange(r);toast("Markiert – jetzt kopieren")})};
+
+// WLAN scan
+$("#scan").onclick=async()=>{
+  const n=$("#nets");n.hidden=false;n.innerHTML=`<div><span class="hint">Suche Netzwerke …</span></div>`;
+  try{let r=await api("/api/scan?start=1");
+    for(let i=0;i<20&&r.scanning;i++){await new Promise(x=>setTimeout(x,800));r=await api("/api/scan")}
+    if(r.error)throw new Error(r.error);
+    const list=r.networks||[];
+    n.innerHTML=list.length?list.map(x=>`<div data-ssid="${esc(x.ssid)}">${bars(x.rssi)}<span>${esc(x.ssid)}</span><em>${x.secure?"🔒":"offen"}</em></div>`).join(""):`<div><span class="hint">Keine Netzwerke gefunden</span></div>`;
+    $$("#nets [data-ssid]").forEach(d=>d.onclick=()=>{form.ssid.value=d.dataset.ssid;$$("#nets div").forEach(x=>x.classList.remove("sel"));d.classList.add("sel");form.wifi.checked=true;setDirty(true);form.pass.focus()});
+  }catch(e){n.innerHTML=`<div><span class="hint">${esc(e.message)}</span></div>`}
+};
+
+// ---------------- service tab: meter readings
+const MONTHS=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+const ve=v=>`${nf(Math.floor(v*10)/10)}<small>VE</small>`;
+
+// Two-step confirmation directly on the button (no confirm() dialog - blocked in some captive portal browsers).
+function twoStep(btn,question,fn){
+  if(btn.classList.contains("arm")){clearTimeout(btn._t);btn.classList.remove("arm");btn.innerHTML=btn._h;fn();return}
+  btn._h=btn.innerHTML;btn.classList.add("arm");btn.textContent=question;
+  btn._t=setTimeout(()=>{btn.classList.remove("arm");btn.innerHTML=btn._h},3500);
+}
+async function act(data){
+  try{const r=await post("/api/action",data);if(!r.ok){toast(r.error,1);return false}toast(r.message||"Erledigt");await refresh();return true}
+  catch(e){toast(e.message,1);return false}
+}
+
+function renderMeter(){
+  const s=S;if(!s)return;
+  $("#s-cur").innerHTML=ve(s.units);
+  $("#s-life").innerHTML=ve(s.units_lifetime);
+  $("#s-since").textContent=s.period_start?"seit "+dmy(s.period_start):"Periodenbeginn unbekannt";
+  $("#s-offinfo").innerHTML=s.offset?`Aktiver Offset: <b>${nf(s.offset.units)} VE</b>${s.offset.date?" seit "+dmy(s.offset.date):""}`:"Kein Offset gesetzt.";
+  // the 12 months before the current one (device time, browser time as fallback)
+  const now=s.local_time?new Date(s.local_time.slice(0,7)+"-01T12:00:00"):new Date();
+  const vals={};(s.monthly||[]).forEach(m=>vals[m.month]=m.units);
+  let h="";
+  for(let k=1;k<=12;k++){
+    const d=new Date(now.getFullYear(),now.getMonth()-k,1);
+    const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    const has=key in vals;
+    h+=`<div class="mrow"><div><b>${MONTHS[d.getMonth()]} ${d.getFullYear()}</b></div>`+
+       `<div class="mval${has?"":" none"}">${has?`${nf(vals[key],0)}<small>VE</small>`:"kein Wert"}</div>`+
+       `<button type="button" class="icon danger${has?"":" ghost"}" data-month="${key}" title="Monatswert löschen">${ic("trash")}</button></div>`;
+  }
+  const ml=$("#mlist");
+  if(!ml.querySelector(".arm"))ml.innerHTML=h;  // don't redraw while a delete waits for confirmation
+  $$("#mlist [data-month]").forEach(b=>b.onclick=()=>twoStep(b,"Löschen?",()=>act({do:"delete_month",month:b.dataset.month,confirm:"yes"})));
+}
+$("#resetcur").onclick=e=>twoStep(e.currentTarget,"Wirklich zurücksetzen?",()=>act({do:"reset_current",confirm:"yes"}));
+$("#resetlife").onclick=e=>twoStep(e.currentTarget,"Wirklich zurücksetzen?",()=>act({do:"reset_lifetime",confirm:"yes"}));
+$("#offset").onclick=async()=>{
+  const v=$("#offval").value.trim().replace(",",".");
+  if(v===""||isNaN(v)||Number(v)<0){toast("Bitte einen Wert ≥ 0 eingeben",1);return}
+  if(await act({do:"offset",value:v}))$("#offval").value="";
+};
+
+// ---------------- service tab: transfer schedule
+// Same rules as hkv::parseSchedule() on the device.
+function parseXfer(t){
+  t=t.trim();if(!t)return{err:"Bitte eine Zahl (Minuten) oder Uhrzeiten angeben"};
+  if(/^\d+$/.test(t)){const n=+t;return n>=1&&n<=1440?{txt:n==1?"→ jede Minute":`→ alle ${n} Minuten`}:{err:"Intervall: 1 bis 1440 Minuten"}}
+  const mins=new Set();
+  for(const p of t.split(/[\s,;]+/).filter(Boolean)){
+    const m=/^(\d{1,2}):(\d{2})$/.exec(p);if(!m)return{err:`„${p}“ ist keine Uhrzeit im Format hh:mm`};
+    let h=+m[1];const mi=+m[2];if(h==24&&mi==0)h=0;
+    if(h>23||mi>59)return{err:`„${p}“ ist keine gültige Uhrzeit`};
+    mins.add(h*60+mi);
+  }
+  if(mins.size>24)return{err:"Höchstens 24 Uhrzeiten"};
+  const l=[...mins].sort((a,b)=>a-b).map(v=>String(Math.floor(v/60)).padStart(2,"0")+":"+String(v%60).padStart(2,"0"));
+  return{txt:"→ täglich um "+l.join(", ")+" Uhr"};
+}
+function xferHint(){const r=parseXfer($("#xfer").value),h=$("#xferhint");h.textContent=r.err||r.txt;h.style.color=r.err?"var(--err)":"var(--ok)"}
+$("#xfer").addEventListener("input",xferHint);
+const dur=s=>s<60?s+" s":s<3600?Math.round(s/60)+" min":Math.floor(s/3600)+" h "+Math.round(s%3600/60)+" min";
+function renderXfer(){
+  const s=S,el=$("#xferstat");if(!s||!el)return;
+  if(s.mqtt=="disabled"){el.innerHTML="MQTT ist nicht aktiv – siehe <a href=\"#setup\" style=\"color:var(--acc2)\">Einrichtung → MQTT</a>.";return}
+  const x=s.xfer||{};
+  el.innerHTML=`Letzte Übertragung: <b>${x.last_s==null?"noch keine":"vor "+dur(x.last_s)}</b> · nächste: <b>${x.next_s==null?"–":x.next_s==0?"gleich":"in "+dur(x.next_s)}</b>`+
+    (s.mqtt=="disconnected"?` · <span style="color:var(--err)">MQTT getrennt</span>`:"");
+}
+$("#publish").onclick=()=>act({do:"publish"});
+function renderPower(){
+  const s=S,el=$("#pwrstat");if(!s||!el||!s.power)return;
+  const p=s.power,mode=["immer an","nur zur Übertragung","aus (WLAN-Taste)"][p.wifi_mode]||"";
+  el.innerHTML=`WLAN-Betrieb: <b>${mode}</b> · CPU ${p.cpu_mhz} MHz`+(p.wake_left_s!=null?` · <span style="color:var(--warn)">WLAN bleibt noch ${dur(p.wake_left_s)} an</span>`:"");
+}
+
+// ---------------- routing
+const TABS=["status","meter","setup","service"];
+function route(){
+  const h=location.hash.slice(1),tab=TABS.includes(h)?h:"status";
+  TABS.forEach(t=>{$("#v-"+t).hidden=t!=tab;$("#t-"+t).classList.toggle("on",t==tab)});
+  if(tab!="status")setLive(false);
+  if(tab=="setup"||tab=="service"){if(!dirty)loadCfg()}
+  else setDirty(false);
+  if(tab=="meter")renderMeter();
+}
+$("#factory").onclick=e=>twoStep(e.currentTarget,"Wirklich alles löschen?",async()=>{
+  try{const r=await post("/api/action",{do:"factory_reset",confirm:"yes"});
+    if(!r.ok){toast(r.error,1);return}
+    $("#ovt").textContent="Werkseinstellungen";
+    $("#ovm").innerHTML="Alle Daten wurden gelöscht, das Gerät startet neu im <b>Einrichtungsmodus</b>.<br><br>Verbinde dich mit dem WLAN <b>HKV-…</b> – das neue Passwort und den QR-Code zeigt das Display.";
+    $("#overlay").classList.add("show");
+  }catch(e){toast(e.message,1)}});
+window.addEventListener("hashchange",route);
+(async()=>{await refresh();if(!location.hash&&S&&S.wifi&&S.wifi.mode=="ap")location.hash="#setup";route();timer=setInterval(refresh,10000)})();
+</script>
+</body>
+</html>

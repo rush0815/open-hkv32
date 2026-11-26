@@ -1,0 +1,87 @@
+HKV-Prototyp - Pinbelegung Unexpected Maker TinyPICO (ESP32-PICO)
+====================================================================
+
+Alle Angaben sind GPIO-NUMMERN (nicht die Position am Header).
+Massgeblich im Code: include/board_tinypico.h
+Stand: 25.11.2026
+
+
+Header des TinyPICO (Draufsicht, USB-Buchse oben)
+-------------------------------------------------
+
+                 links                         rechts
+      Pos.  Signal                       Pos.  Signal
+      L1    GPIO 23  MOSI  -> TFT SDA     R1    BAT
+      L2    GPIO 19  MISO  (frei)         R2    GND   -> GND (Sensor, TFT, Taster)
+      L3    GPIO 18  SCK   -> TFT SCL     R3    5V
+      L4    GPIO 5   SS    -> TFT CS      R4    3V3   -> VCC (Sensor, TFT)
+      L5    GPIO 22  SCL   -> I2C SCL     R5    GPIO 4  -> Taster
+      L6    GPIO 21  SDA   -> I2C SDA     R6    GPIO 14 -> WLAN-Taste
+      L7    GPIO 32  (frei)               R7    GPIO 15 (frei, Boot-Pin)
+      L8    GPIO 33  (frei)               R8    GPIO 27 -> TFT BLK
+      L9    RESET                         R9    GPIO 26 -> TFT RES
+      L10   GND                           R10   GPIO 25 -> TFT DC
+
+
+Anschluss nach Bauteil
+----------------------
+
+BMP280 (Raumtemperatur + Luftdruck, I2C, Adresse 0x76 oder 0x77)
+  VCC  -> 3V3        (R4)
+  GND  -> GND        (R2 oder L10)
+  SDA  -> GPIO 21    (L6)
+  SCL  -> GPIO 22    (L5)
+
+MLX90614 (Heizkoerper, IR, I2C, Adresse 0x5A) - AKTIV
+  GY-906-Modul (MLX90614ESF-BAA, 3-V-Variante), am selben I2C-Bus wie der BMP280:
+  VIN  -> 3V3        (R4)
+  GND  -> GND
+  SDA  -> GPIO 21    (L6)
+  SCL  -> GPIO 22    (L5)
+  Zurueck auf Simulation (falls der Sensor ausfaellt): HKV_RADIATOR_SENSOR=0
+  in include/hkv_features.h
+
+ST7735S TFT 0,96" 80x160 (SPI)
+  VCC  -> 3V3        (R4)
+  GND  -> GND
+  SCL  -> GPIO 18    (L3)   SPI-Takt
+  SDA  -> GPIO 23    (L1)   SPI-Daten (MOSI)
+  RES  -> GPIO 26    (R9)
+  DC   -> GPIO 25    (R10)
+  CS   -> GPIO 5     (L4)
+  BLK  -> GPIO 27    (R8)   HIGH = Beleuchtung an, LOW = aus
+  Einbau quer (160x80). Invertieren / 180 Grad drehen: Weboberflaeche Service -> Display
+  SPI-Takt 8 MHz (im Datenblatt-Bereich)
+
+Taster
+  Seite 1 -> GPIO 4  (R5)   interner Pull-up, gedrueckt = LOW
+  Seite 2 -> GND
+  kurz druecken = Display an / naechste Seite
+  3 s halten    = Einrichtungsmodus (WLAN-Access-Point)
+
+WLAN-Taste
+  Seite 1 -> GPIO 14 (R6)   interner Pull-up, gedrueckt = LOW
+  Seite 2 -> GND
+  druecken = WLAN fuer die Wachzeit einschalten (Service -> Energie), weckt auch aus dem Light-Sleep
+
+
+Intern belegt (nicht am Header, NICHT verwenden)
+------------------------------------------------
+  GPIO 35       Batteriespannung (Spannungsteiler 442k / 160k)
+  GPIO 34       Ladezustand (LOW = laedt)
+  GPIO 2/12/13  eingebaute RGB-LED (DotStar), wird beim Start abgeschaltet
+  GPIO 6 - 11   interner Flash-Speicher - Benutzung bringt das Board zum Absturz!
+
+
+Frei fuer Erweiterungen
+-----------------------
+  GPIO 32, 33, 19 (MISO, solange kein SPI-Lesen noetig)
+  GPIO 15 nur mit Vorsicht (Boot-Pin: muss beim Start HIGH sein)
+  GPIO 32/33 sind ADC1-Kanaele -> geeignet z. B. fuer einen NTC (funktioniert auch bei aktivem WLAN)
+
+
+Hinweis zur urspruenglichen ChatGPT-Belegung
+--------------------------------------------
+Die erste Codeversion verwendete SDA=6, SCL=7, MOSI=21, SCK=19, RST=18.
+Das ist die Belegung des Unexpected Maker TinyC6 (ESP32-C6), nicht des TinyPICO.
+GPIO 6/7 sind beim TinyPICO Flash-Pins -> nicht verwenden.

@@ -1,0 +1,8 @@
+{
+  "name": "hkv_core",
+  "version": "0.1.0",
+  "description": "Platform independent core of the open heat cost allocator (algorithm, ledger, OMS telegram). No Arduino dependency.",
+  "license": "GPL-3.0-only",
+  "frameworks": "*",
+  "platforms": "*"
+}
