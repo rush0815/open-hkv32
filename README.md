@@ -18,6 +18,60 @@ Daher dieses Projekt: ein eigener, offener Heizkostenverteiler, dessen Werte man
 
 **Später:** Portierung auf den **TI CC1312** (CC1312R, Sub-1-GHz-Funk-Mikrocontroller mit sehr geringem Stromverbrauch), mit deutlich weniger „Schnickschnack“: kein WLAN, keine Weboberfläche, kein Farbdisplay, Übertragung per wireless M-Bus. Deshalb ist der Code von Anfang an zweigeteilt. Der Kern (Messung, Bewertung, Zählerstände, Telegramme) ist plattformunabhängig und wird unverändert übernommen. Neu geschrieben werden nur die Treiber (siehe [Software-Architektur](#software-architektur-und-portierung-auf-den-cc1312)).
 
+## So sieht's aus
+
+**Weboberfläche:** Verbrauch, Temperaturen, Akku und Monatswerte auf einen Blick, im Heimnetz, am Handy oder in Home Assistant.
+
+![Weboberfläche – Übersicht](docs/img/web-uebersicht.png)
+
+**Display am Gerät** (0,96″, 160 × 80 Pixel), per Taster durchblättern:
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/img/display-uebersicht.png" width="380" alt="Display: Verbrauch"><br><sub>Verbrauch aktuell und Vorperiode</sub></td>
+    <td align="center"><img src="docs/img/display-temperaturen.png" width="380" alt="Display: Temperaturen"><br><sub>Heizkörper, Raum und ΔT, live</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/display-einrichtung.png" width="380" alt="Display: WLAN einrichten"><br><sub>WLAN-Einrichtung per QR-Code</sub></td>
+    <td align="center"><img src="docs/img/display-verbinden.png" width="380" alt="Display: Verbinden"><br><sub>Verbindungsaufbau</sub></td>
+  </tr>
+</table>
+
+**Einrichtung in einer Minute:** QR-Code auf dem Display scannen, WLAN aus der Liste wählen, fertig. Die Zähler lassen sich im eigenen Tab verwalten.
+
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/web-handy-einrichtungsmodus.png" width="260" alt="Handy: Einrichtungsmodus"><br><sub>Einrichtungsmodus am Handy</sub></td>
+    <td align="center" valign="top"><img src="docs/img/web-zaehler.png" width="520" alt="Weboberfläche: Zähler"><br><sub>Zählerstände, Offset nach Gerätetausch, Monatswerte</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><b>Weitere Ansichten</b> (helles Design, Service-Tab, alle Display-Seiten)</summary>
+
+<br>
+
+![Weboberfläche – helles Design](docs/img/web-uebersicht-hell.png)
+
+![Weboberfläche – Einrichtung](docs/img/web-einrichtung.png)
+
+![Weboberfläche – Service](docs/img/web-service.png)
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/img/display-verbindung.png" width="380" alt="Display: Verbindung"><br><sub>Verbindung, MQTT, Firmware</sub></td>
+    <td align="center"><img src="docs/img/display-fehlgeschlagen.png" width="380" alt="Display: Verbindung fehlgeschlagen"><br><sub>Verbindung fehlgeschlagen</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/img/display-wlan-aus.png" width="380" alt="Display: WLAN aus"><br><sub>WLAN aus (Energiesparen)</sub></td>
+    <td align="center"><img src="docs/img/display-akku-niedrig.png" width="380" alt="Display: Akku niedrig"><br><sub>Akku-Warnung</sub></td>
+  </tr>
+</table>
+
+</details>
+
+<sub>Alle Bilder zeigen Beispieldaten. Die Display-Bilder sind mit demselben Code gerendert wie auf dem Gerät (`tools/ui_preview`), die Weboberfläche läuft für die Screenshots gegen einen Beispieldaten-Server (`tools/web_preview`).</sub>
+
 ---
 
 ## Inhaltsverzeichnis
@@ -94,6 +148,8 @@ Kompilier-Optionen stehen in [include/hkv_features.h](include/hkv_features.h). M
 | `HKV_ENABLE_LIGHT_SLEEP` | 1 | Light Sleep, solange WLAN und Display aus sind |
 
 **Display-Vorschau am PC:** `tools/ui_preview/run.sh` rendert alle Bildschirme mit Beispieldaten nach `.pio/ui_preview/preview.png`. Es verwendet denselben Code wie das Gerät. Damit lassen sich Layouts ohne Hardware anpassen. Voraussetzungen sind `g++`, Python mit `pillow` und `qrcode` sowie ein vorheriges `pio run`.
+
+**Weboberfläche ohne Gerät:** `python3 tools/web_preview/mock_server.py`, dann http://127.0.0.1:8080 öffnen. Das liefert `src/net/web/index.html` mit Beispieldaten aus. Mit `… 8080 ap` startet die Ansicht im Einrichtungsmodus.
 
 Hat man noch kein WLAN eingerichtet, kann man die Telegramme aus dem seriellen Log direkt prüfen:
 
@@ -271,6 +327,7 @@ src/                        ESP32-Portierung (TinyPICO)
 include/                    board_tinypico.h (Pins), hkv_features.h (Optionen)
 test/test_core/             Unit-Tests des Kerns (laufen nativ auf dem PC)
 tools/ui_preview/           PC-Vorschau aller Display-Seiten
+tools/web_preview/          Weboberfläche mit Beispieldaten im Browser (ohne Gerät)
 ```
 
 Für eine Portierung schreibt man nur die Implementierungen der Schnittstellen in `hal.h` neu und eine eigene `main`. Der Kern wird unverändert übernommen:
