@@ -96,6 +96,7 @@ Daher dieses Projekt: ein eigener, offener Heizkostenverteiler, dessen Werte man
 | MLX90614 (GY-906, I2C, 3-V-Variante) | Heizkörper-Oberflächentemperatur |
 | ST7735S 0,96" 80×160 (SPI) | Anzeige, nur im Prototyp |
 | Taster gegen GND | Anzeige / Seiten / Einrichtung |
+| SHT40/STS40 oder zweiter BMP280 (I2C, optional) | Referenzfühler, nur vorübergehend für den Kalibrierlauf |
 
 Alle Angaben sind **GPIO-Nummern**. Die Pinbelegung steht zentral in [include/board_tinypico.h](include/board_tinypico.h).
 
@@ -280,7 +281,7 @@ Einheiten += Rate · Δt
 Weiteres Verhalten:
 
 - **Emissionsgrad (IR-Sensor):** Der MLX90614 misst ab Werk mit ε = 1,0. Unter *Service → Messung & Bewertung* lässt sich der Emissionsgrad der Heizkörperoberfläche einstellen (lackiert typisch 0,93–0,95). Die Firmware rechnet mit der Gehäusetemperatur des Sensors um: T⁴ = Tₐ⁴ + (Tₘ⁴ − Tₐ⁴)/ε. Das Sensor-EEPROM wird nicht verändert.
-- **Kopplung des Raumfühlers:** Der Raumfühler sitzt im Gerät am Heizkörper. Er wird von dessen Wärme mitgezogen, folgt ihr verzögert und wird zusätzlich von der Elektronik erwärmt. Die Korrektur (*Service → Kalibrierung Fühler*) lautet T_Raum = (T_gemessen − c · T_HK,verzögert) / (1 − c). Dabei ist T_HK,verzögert der mit der Zeitkonstante τ (Standard 10 min) nachgeführte Heizkörperwert. Kalibriert wird in zwei Schritten mit einem Thermometer: Bei **kaltem** Heizkörper ergibt sich der *Offset Raum* (Eigenwärme der Elektronik), bei **warmem** die Kopplung c. Kommerzielle Zweifühlergeräte berücksichtigen diese Kopplung über ihre im Labor ermittelten Bewertungsfaktoren.
+- **Kopplung des Raumfühlers:** Der Raumfühler sitzt im Gerät am Heizkörper. Er wird von dessen Wärme mitgezogen, folgt ihr verzögert und wird zusätzlich von der Elektronik erwärmt. Die Korrektur (*Service → Kalibrierung Fühler*) lautet T_Raum = (T_gemessen − c · T_HK,verzögert) / (1 − c). Dabei ist T_HK,verzögert der mit der Zeitkonstante τ (Standard 10 min) nachgeführte Heizkörperwert. **Jeder Zähler muss vor der Inbetriebnahme kalibriert werden. Vorher zählt er nicht** (Zustand „Nicht kalibriert“). Dazu dient der **Kalibrierlauf mit Referenzfühler**. Er wird von Hand gestartet (*Service → Kalibrierung Fühler*, Dauer in Minuten) und endet von selbst. Das Gerät berechnet dann die Kalibrierwerte, übernimmt sie sofort und beginnt zu zählen. In der Entwicklerversion lässt sich der Lauf auch vorzeitig beenden. Ebenso endet er, wenn der Referenzfühler abgezogen wird. In beiden Fällen rechnet das Gerät mit den bis dahin gesammelten Daten, übernimmt die Werte und zählt danach. Ablauf des Laufs: Ein SHT40/STS40 (0x44–0x46) oder ein zweiter BMP280 (0x77) wird vorübergehend an den I2C-Bus gesteckt und frei in den Raum gehängt. Über 1–4 h zeichnet das Gerät alle 30 s Heizkörper, internen Raumfühler und Referenz auf. Mit y = T_roh − T_Ref und x = T_HK,verzögert − T_Ref gilt y = −Offset + c · x. Offset und c ergeben sich daraus als Ausgleichsgerade, und zwar parallel für τ = 0 … 30 min. Gewählt wird das τ mit dem kleinsten Restfehler. Für Zwischenstände reichen laufende Summen ([calibration.h](lib/hkv_core/src/hkv/calibration.h)). Zusätzlich speichert das Gerät während des Laufs die Messpunkte, das sind 10 Byte pro 30 s, also etwa 2,4 KB für 2 h. Am Ende rechnet es ein zweites Mal und verwirft dabei Ausreißer: Messpunkte mit mehr als 3 σ Abweichung, zum Beispiel durch Luftzug oder Sonne auf dem Referenzfühler, höchstens 10 %. Danach gibt es den Speicher wieder frei. Hat sich der Heizkörper während des Laufs um weniger als 8 K verändert, wird nur der Offset bestimmt. Ohne Referenzfühler geht es in zwei Schritten mit einem Thermometer: Bei **kaltem** Heizkörper ergibt sich der *Offset Raum* (Eigenwärme der Elektronik), bei **warmem** die Kopplung c. Kommerzielle Zweifühlergeräte berücksichtigen diese Kopplung über ihre im Labor ermittelten Bewertungsfaktoren.
 - **Zeitlücken (z. B. Stromausfall):** Der ESP32 hat keine gepufferte Uhr. Das Gerät speichert deshalb mindestens stündlich den letzten bekannten Zeitpunkt. Startet es ohne gültige Uhrzeit, zählt es weiter und notiert, wie viele Einheiten ohne genauen Zeitstempel anfallen. Sobald die Uhrzeit wieder da ist (NTP oder Browser), wird die Lücke abgeschlossen. Monats- und Stichtagswechsel werden dann nachgeholt. Die letzte Lücke steht im Tab *Zähler* und in der API (`time_gap`).
 - **Raumfühler ausgefallen:** Es wird mit 20 °C weitergerechnet (wie bei einem Einfühlergerät), und ein Fehler-Flag wird gesetzt.
 - **Heizkörperfühler ausgefallen:** Es wird nicht gezählt, und ein Fehler-Flag wird gesetzt.
@@ -315,6 +316,7 @@ lib/hkv_core/src/hkv/       portabler Kern – kein Arduino, kein Heap, keine Ex
                             IStorage, IDisplay, IBlockCipher, ITelegramSink, IRandom)
   app.*                     HkvApp: komplette Geräte-Logik (Messen, Speichern, Senden, Anzeige)
   allocator.*               Bewertungsalgorithmus
+  calibration.*             Kalibrierlauf Raumfühler gegen Referenzfühler (Ausgleichsrechnung)
   ledger.*                  Zählerstand, Stichtag, Monatswerte
   settings.*                Geräteeinstellungen + Validierung
   oms.*  aes128.*           OMS-Telegramm, CRC, AES-128
@@ -323,7 +325,7 @@ lib/hkv_core/src/hkv/       portabler Kern – kein Arduino, kein Heap, keine Ex
   sim/emulated_radiator.*   emulierter MLX90614
 src/                        ESP32-Portierung (TinyPICO)
   main.cpp                  verdrahtet Treiber + Kern, Light Sleep
-  platform/                 BMP280, MLX90614, ST7735, Batterie, NVS, Taster, Sleep
+  platform/                 BMP280, MLX90614, Referenzfühler (SHT4x/BMP280), ST7735, Batterie, NVS, Taster, Sleep
   ui/                       Bildschirm-Layouts (Adafruit GFX, 80×160 Hochformat)
   net/                      WLAN, Access Point, QR-Code, Weboberfläche, NTP, MQTT (nur Prototyp)
 include/                    board_tinypico.h (Pins), hkv_features.h (Optionen)
@@ -349,6 +351,9 @@ Für eine Portierung schreibt man nur die Implementierungen der Schnittstellen i
 **Stromverbrauch:** Das TFT ist der größte Verbraucher, gefolgt vom WLAN. Im Prototyp schläft der ESP32 im Light Sleep, solange WLAN und Display aus sind. Batterielaufzeiten wie bei einem kommerziellen Heizkostenverteiler (rund 10 Jahre) sind erst auf dem CC1312 realistisch.
 
 ## Offene Punkte
+
+Weitere Ideen stehen in [TODO.md](TODO.md).
+
 
 - [ ] MLX90614 an echter Hardware in Betrieb nehmen (`HKV_RADIATOR_SENSOR=1`)
 - [ ] Kc-Werte für die eigene Bauform ermitteln (Vergleich mit Vorlauf/Rücklauf-Messung)

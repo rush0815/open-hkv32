@@ -41,6 +41,17 @@ MLX90614 (Heizkoerper, IR, I2C, Adresse 0x5A) - AKTIV
   Zurueck auf Simulation (falls der Sensor ausfaellt): HKV_RADIATOR_SENSOR=0
   in include/hkv_features.h
 
+Referenzfuehler fuer den Kalibrierlauf (I2C, nur voruebergehend angesteckt)
+  Am selben I2C-Bus, kein zusaetzlicher Pin noetig. Wird automatisch erkannt,
+  auch wenn er erst im Betrieb angesteckt wird (Service -> Kalibrierung Fuehler):
+    SHT40 / STS40 (empfohlen, +-0,2 C)   Adresse 0x44, 0x45 oder 0x46
+    oder zweiter BMP280 (+-1 K)           SDO -> 3V3 = Adresse 0x77
+  VCC  -> 3V3        (R4)
+  GND  -> GND
+  SDA  -> GPIO 21    (L6)
+  SCL  -> GPIO 22    (L5)
+  Kabel bis ca. 1-2 m, Fuehler frei in den Raum haengen (>= 1 m vom Heizkoerper).
+
 ST7735S TFT 0,96" 80x160 (SPI)
   VCC  -> 3V3        (R4)
   GND  -> GND

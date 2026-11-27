@@ -374,9 +374,26 @@ button.arm{background:var(--err)!important;border-color:var(--err)!important;col
           <div><label>Kopplung Raumfühler c</label><input name="rcpl" type="number" step="0.01" min="0" max="0.8"></div>
           <div><label>Zeitkonstante τ (min)</label><input name="rtau" type="number" step="1" min="0" max="60"></div>
         </div>
+        <details id="calrunbox" open>
+          <summary>Kalibrierlauf mit Referenzfühler</summary>
+          <p class="hint" style="margin-top:4px">Ein zweiter Raumfühler (<b>SHT40/STS40</b> empfohlen, oder ein <b>BMP280</b> mit SDO an 3V3) wird vorübergehend an den I2C-Bus gesteckt und frei in den Raum gehängt – mindestens 1 m vom Heizkörper, nicht in der Sonne. Das Gerät zeichnet den Verlauf auf und bestimmt <b>Offset Raum, Kopplung c und Zeitkonstante τ</b> gemeinsam. Die Werte werden am Ende <b>sofort übernommen</b>, erst danach zählt der Zähler. Danach kann der Referenzfühler wieder ab.</p>
+          <p class="hint" id="calneed" style="color:var(--warn)" hidden><b>Dieser Zähler ist noch nicht kalibriert und zählt deshalb nicht.</b></p>
+          <label>Dauer (min)</label>
+          <div class="row" style="margin-top:0"><input id="caldur" type="number" min="1" max="720" step="1" value="120" style="max-width:110px"><button type="button" id="calprobe">Fühler prüfen</button><button type="button" class="pri" id="calstart">Starten</button></div>
+          <div id="calrun" hidden>
+            <div class="meter" style="margin-top:12px"><i id="calbar" style="width:0"></i></div>
+            <p class="hint" id="calstat"></p>
+            <dl class="kv" id="calres" style="margin-top:10px" hidden></dl>
+            <div class="row"><button type="button" class="danger" id="calstop">Vorzeitig beenden</button></div>
+          </div>
+          <p class="hint" id="caltip"><b>Ablauf:</b> mit <b>kaltem Heizkörper</b> starten (seit mindestens 30 min aus), nach etwa 15 min das Thermostat <b>aufdrehen</b> und gegen Ende wieder zudrehen. Die ersten 10 min dienen zum Einschwingen (bei kurzen Läufen ein Drittel der Laufzeit) und fließen noch nicht in c und τ ein. Die Zählung läuft währenddessen normal weiter.</p>
+        </details>
+        <details>
+          <summary>Ohne Referenzfühler: mit Thermometer</summary>
         <label>Kalibrieren: Raumtemperatur laut Thermometer (°C)</label>
-        <div class="row" style="margin-top:0"><input id="calref" inputmode="decimal" placeholder="z. B. 21,5" style="max-width:140px"><button type="button" id="calc">Berechnen</button></div>
-        <p class="hint" id="calhint">Zwei Schritte, Thermometer jeweils mit Abstand zum Heizkörper:<br><b>1. Heizkörper kalt</b> (weniger als 5 K über Raum) → ergibt den <b>Offset Raum</b> (Eigenwärme der Elektronik).<br><b>2. Heizkörper warm</b> (≥ 5 K über Raum, möglichst gleichbleibend) → ergibt die <b>Kopplung c</b>.<br>Das Ergebnis wird ins Feld eingetragen – danach speichern.</p>
+          <div class="row" style="margin-top:0"><input id="calref" inputmode="decimal" placeholder="z. B. 21,5" style="max-width:140px"><button type="button" id="calc">Berechnen</button></div>
+          <p class="hint" id="calhint">Zwei Schritte, Thermometer jeweils mit Abstand zum Heizkörper:<br><b>1. Heizkörper kalt</b> (weniger als 5 K über Raum) → ergibt den <b>Offset Raum</b> (Eigenwärme der Elektronik).<br><b>2. Heizkörper warm</b> (≥ 5 K über Raum, möglichst gleichbleibend) → ergibt die <b>Kopplung c</b>.<br>Das Ergebnis wird ins Feld eingetragen – danach speichern.</p>
+        </details>
       </div>
 
       <div class="card wide">
@@ -515,7 +532,7 @@ function post(url,data){return api(url,{method:"POST",headers:{"Content-Type":"a
 function toast(msg,err){const t=$("#toast");t.textContent=msg;t.className="toast show"+(err?" err":"");clearTimeout(t._h);t._h=setTimeout(()=>t.className="toast",3200)}
 
 const ERR={1:"Heizkörperfühler",2:"Raumfühler",4:"Akku schwach",8:"Uhrzeit nicht gesetzt",16:"Speicherfehler"};
-const STATE={counting:["Zählt","ok"],idle:["Ruhe",""],summer:["Sommer – gesperrt","warn"],sensor_error:["Fühlerfehler","err"]};
+const STATE={uncalibrated:["Nicht kalibriert – zählt nicht","warn"],calibrating:["Kalibrierung läuft – zählt nicht","warn"],counting:["Zählt","ok"],idle:["Ruhe",""],summer:["Sommer – gesperrt","warn"],sensor_error:["Fühlerfehler","err"]};
 function bars(rssi){const l=rssi>=-55?4:rssi>=-65?3:rssi>=-75?2:1;return `<span class="sig">${[5,8,11,14].map((h,i)=>`<i style="height:${h}px" class="${i<l?"on":""}"></i>`).join("")}</span>`}
 
 function renderStatus(){
@@ -531,6 +548,13 @@ function renderStatus(){
   // banner
   let b="";
   if(w.mode=="ap")b=`<div class="banner">${ic("wifi")}<div><b>Einrichtungsmodus</b>Verbinde das Gerät mit deinem WLAN – unter <a href="#setup" style="color:var(--acc2)">Einrichtung</a>.</div></div>`;
+  else if(s.calib&&s.calib.state=="running"){const c=s.calib,pct=c.duration_s?Math.min(100,100*c.elapsed_s/c.duration_s):0;
+    b=`<div class="banner warn">${ic("tool")}<div style="flex:1"><b>Kalibrierung läuft – der Zähler zählt währenddessen nicht</b>${calLeft(c)} · <a href="#service" style="color:var(--warn)">Details</a>`+
+      `<div class="meter" style="margin:8px 0 6px"><i style="width:${pct.toFixed(1)}%;background:var(--warn)"></i></div>`+
+      `<span style="display:grid;grid-template-columns:auto auto;gap:2px 12px;justify-content:start">`+
+      `<span>Heizkörper</span><strong>${nf(c.radiator_c)} °C</strong><span>Raumfühler roh</span><strong>${nf(c.room_raw_c,2)} °C</strong>`+
+      `<span>Referenz ${esc(c.ref_name||"")}</span><strong style="color:var(--ok)">${nf(c.ref_c,2)} °C</strong></span></div></div>`}
+  else if(s.calib&&!s.calib.calibrated)b=`<div class="banner warn">${ic("alert")}<div><b>Nicht kalibriert – der Zähler zählt noch nicht</b>Vor der Inbetriebnahme muss einmal der Kalibrierlauf mit Referenzfühler laufen. <a href="#service" style="color:var(--warn)">Zur Kalibrierung</a></div></div>`;
   else if(!s.local_time)b=`<div class="banner warn">${ic("clock")}<div><b>Uhrzeit nicht gesetzt</b>Stichtag und Monatswerte laufen erst mit gültiger Uhrzeit. <a href="#setup" style="color:var(--warn)">Jetzt stellen</a></div></div>`;
   $("#banner").innerHTML=b;
   // consumption
@@ -562,6 +586,7 @@ function renderStatus(){
   renderMeter();
   renderXfer();
   renderPower();
+  renderCalib();
   if(C)$("#devtime").textContent=$("#time").textContent;
 }
 
@@ -621,7 +646,9 @@ function fill(c){
 }
 async function loadCfg(){try{C=await api("/api/config");fill(C);if(S)$("#devtime").textContent=$("#time").textContent}catch(e){toast(e.message,1)}}
 function setDirty(v){dirty=v;$("#savebar").classList.toggle("show",v)}
-form.addEventListener("input",()=>setDirty(true));
+// Inputs that only feed an action (calibration duration, thermometer value) are no settings.
+const ACTION_INPUTS=["caldur","calref"];
+form.addEventListener("input",e=>{if(!ACTION_INPUTS.includes(e.target.id))setDirty(true)});
 $("#discard").onclick=()=>C&&fill(C);
 $("#save").onclick=async()=>{
   const btn=$("#save");btn.disabled=true;
@@ -739,7 +766,8 @@ function renderXfer(){
   if(s.mqtt=="disabled"){el.innerHTML="MQTT ist nicht aktiv – siehe <a href=\"#setup\" style=\"color:var(--acc2)\">Einrichtung → MQTT</a>.";return}
   const x=s.xfer||{};
   el.innerHTML=`Letzte Übertragung: <b>${x.last_s==null?"noch keine":"vor "+dur(x.last_s)}</b> · nächste: <b>${x.next_s==null?"–":x.next_s==0?"gleich":"in "+dur(x.next_s)}</b>`+
-    (s.mqtt=="disconnected"?` · <span style="color:var(--err)">MQTT getrennt</span>`:"");
+    (s.mqtt=="disconnected"?` · <span style="color:var(--err)">MQTT getrennt</span>`:"")+
+    (x.failed?` · <span style="color:var(--err)">letzter Versuch fehlgeschlagen</span>`:"");
 }
 $("#publish").onclick=()=>act({do:"publish"});
 $("#calc").onclick=async()=>{
@@ -759,6 +787,48 @@ $("#calc").onclick=async()=>{
     toast("c = "+nf(r.coupling,2)+" berechnet – bitte speichern");
   }catch(e){toast(e.message,1)}
 };
+// ---------------- calibration run (reference sensor)
+let calPrev=null;
+// "Einschwingen noch 2 min · Lauf noch 8 min" - same wording as on the display
+const calLeft=c=>{const w=c.warmup_s??600,l=Math.max(0,c.duration_s-c.elapsed_s);
+  return (c.elapsed_s<w?`Einschwingen noch ${dur(w-c.elapsed_s)} · `:"")+`Lauf noch ${dur(l)}`};
+function renderCalib(){
+  const c=S&&S.calib;if(!c)return;
+  if(calPrev=="running"&&c.state!="running"&&!dirty)loadCfg();
+  calPrev=c.state;
+  $("#calrunbox").hidden=!c.port;$("#calneed").hidden=c.calibrated||c.state=="running";
+  const run=c.state=="running",show=c.state!="idle";
+  $("#calrun").hidden=!show;$("#calstart").disabled=run;$("#calprobe").disabled=run;$("#caldur").disabled=run;
+  if(!show)return;
+  $("#calstop").hidden=!run;
+  const pct=c.duration_s?Math.min(100,100*c.elapsed_s/c.duration_s):0;
+  $("#calbar").style.width=pct.toFixed(1)+"%";
+  $("#calbar").style.background=c.state=="aborted"?"var(--err)":c.state=="done"?"var(--ok)":"var(--acc)";
+  const vals=`Heizkörper ${nf(c.radiator_c)} °C · Raumfühler roh ${nf(c.room_raw_c,2)} °C · Referenz (${esc(c.ref_name||"–")}) ${nf(c.ref_c,2)} °C`;
+  const why={user:"Vorzeitig beendet",reference_lost:"Beendet – Referenzfühler antwortet nicht mehr",sensor_lost:"Beendet – Heizkörper- oder Raumfühler liefert keine Werte"};
+  const fin=c.applied?" Werte mit den bisherigen Daten berechnet und übernommen – der Zähler zählt.":" Keine gültigen Messpunkte – Korrekturwerte unverändert, der Zähler zählt.";
+  let st;
+  if(run)st=calLeft(c);
+  else if(c.state=="done")st=c.applied?"Fertig – Werte übernommen, der Zähler zählt. Der Referenzfühler kann jetzt ab.":"Fertig."+fin;
+  else st=(why[c.reason]||"Beendet")+"."+fin;
+  $("#calstat").innerHTML=`<b>${st}</b><br>${vals}`;
+  const r=c.result,box=$("#calres");
+  box.hidden=!r;
+  if(!r)return;
+  const pre=run?" (Zwischenstand)":" (übernommen)";
+  box.innerHTML=`<dt>Offset Raum${pre}</dt><dd>${nf(r.offset,2)} K</dd>`+
+    (r.solved?`<dt>Kopplung c</dt><dd>${nf(r.coupling,2)}</dd><dt>Zeitkonstante τ</dt><dd>${r.tau} min</dd>`:
+      `<dt>Kopplung c / τ</dt><dd style="color:var(--warn)">nicht bestimmbar – unverändert</dd>`)+
+    `<dt>Abweichung vorher</dt><dd>± ${nf(r.rms_before,2)} K</dd><dt>Abweichung nachher</dt><dd style="color:${r.rms_after<0.3?"var(--ok)":r.rms_after<0.7?"var(--warn)":"var(--err)"}">± ${nf(r.rms_after,2)} K</dd>`+
+    `<dt>Heizkörper-Spanne</dt><dd>${nf(r.span)} K</dd><dt>Messpunkte</dt><dd>${r.samples}${r.outliers?` <span class="hint">(${r.outliers} Ausreißer verworfen)</span>`:""}</dd>`+
+    (r.solved?"":`<dd style="grid-column:1/-1;text-align:left;font-weight:400" class="hint">${r.span<8?"Der Heizkörper hat sich zu wenig verändert (mindestens 8 K Spanne nötig), um Offset und Kopplung zu trennen. Übernommen wurde nur der Offset – für c den Lauf mit Aufheizen wiederholen.":r.samples<10&&!run?"Lauf zu kurz für die Kopplung (nach dem Einschwingen sind mindestens 10 Messpunkte = 5 min nötig) – übernommen wurde nur der Offset.":"Kein plausibles c gefunden (zwischen 0 und 0,8). Sitzt der Referenzfühler zu nah am Heizkörper?"}</dd>`);
+}
+$("#calprobe").onclick=()=>act({do:"calib_probe"});
+$("#caldur").addEventListener("keydown",e=>{if(e.key=="Enter"){e.preventDefault();$("#calstart").click()}});
+$("#calref").addEventListener("keydown",e=>{if(e.key=="Enter"){e.preventDefault();$("#calc").click()}});
+$("#calstart").onclick=async()=>{if(await act({do:"calib_start",dur:$("#caldur").value}))renderCalib()};
+$("#calstop").onclick=async()=>{if(confirm("Kalibrierlauf jetzt beenden? Die Kalibrierwerte werden mit den bisherigen Daten berechnet und sofort übernommen, danach zählt der Zähler."))if(await act({do:"calib_stop"}))await loadCfg()};
+
 function renderPower(){
   const s=S,el=$("#pwrstat");if(!s||!el||!s.power)return;
   const p=s.power,mode=["immer an","nur zur Übertragung","aus (WLAN-Taste)"][p.wifi_mode]||"";
@@ -802,7 +872,8 @@ const HELP={
   offA:"Feste Korrektur des Raumfühlers in Kelvin (+/−). Wird vor der Kopplungskorrektur angewendet.",
   batlow:"Unter dieser Akkuspannung meldet das Gerät „Akku schwach“ (Display-Warnung, Statusbit im Telegramm).",
   rcpl:"Wie stark der Raumfühler von der Heizkörperwärme mitgezogen wird (0 = aus): T<sub>Raum</sub> = (T<sub>gemessen</sub> − c · T<sub>HK</sub>) / (1 − c). Am einfachsten mit der Kalibrierhilfe ermitteln.",
-  rtau:"Der Raumfühler folgt dem Heizkörper verzögert (Wärmekapazität von Gehäuse und Fühler). Für die Kopplung wird deshalb ein um diese Zeitkonstante verzögerter Heizkörperwert verwendet. Standard 10 min; 0 = keine Verzögerung.",
+  rtau:"Der Raumfühler folgt dem Heizkörper verzögert (Wärmekapazität von Gehäuse und Fühler). Für die Kopplung wird deshalb ein um diese Zeitkonstante verzögerter Heizkörperwert verwendet. Standard 10 min; 0 = keine Verzögerung. Wird beim Kalibrierlauf mit Referenzfühler automatisch bestimmt.",
+  "#caldur":"Dauer des Kalibrierlaufs in Minuten (Entwicklerversion: frei wählbar). 120 min reichen, wenn darin Aufheizen und eine warme Phase liegen. Bei einer taktenden Anlage lieber 180–240 min. Die Einschwingzeit beträgt 10 min, bei kurzen Läufen ein Drittel der Laufzeit. Für die Kopplung c braucht es danach noch mindestens 5 min, sonst wird nur der Offset bestimmt.",
   "#calref":"Raumtemperatur von einem normalen Thermometer mit Abstand zum Heizkörper. Bei kaltem Heizkörper wird daraus der Offset Raum berechnet, bei warmem (≥ 5 K über Raum) die Kopplung c.",
   mint:"Wie oft gemessen und gezählt wird. Kürzer = genauer, aber mehr Stromverbrauch. Standard 120 s.",
   xfer:"Wann die Werte per WLAN (MQTT) gesendet werden:<br><b>Zahl</b> = alle N Minuten, z. B. <b>15</b><br><b>Uhrzeiten</b> = feste Zeiten, z. B. <b>06:00 12:00 18:00</b>",

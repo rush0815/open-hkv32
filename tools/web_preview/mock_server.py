@@ -36,6 +36,10 @@ STATUS = {
     "xfer": {"schedule": "15", "last_s": 200, "next_s": 700},
     "mac": "AA:BB:CC:DD:EE:FF", "offset": None,
     "time_gap": {"start": "2026-11-20T14:02", "end": "2026-11-20T14:20", "units": 0.3},
+    "calib": {"calibrated": True, "port": True, "state": "done", "reason": "", "ref_name": "SHT4x",
+              "duration_s": 7200, "elapsed_s": 7200, "samples": 240, "applied": True, "ref_c": 21.42, "radiator_c": 38.4,
+              "room_raw_c": 26.91, "result": {"solved": True, "offset": -1.62, "coupling": 0.31, "tau": 12,
+                                              "rms_before": 2.84, "rms_after": 0.17, "span": 31.6, "samples": 217, "outliers": 3}},
     "monthly": [{"month": "2026-%02d" % m, "units": u} for m, u in
                 [(10, 96), (9, 71), (8, 55), (7, 52), (6, 49), (5, 46), (4, 38), (3, 27), (2, 16), (1, 8)]],
     "telegram": "2A4418637856341201087A2A000000046D250E583B036ED20400426C3F3C436E2E16000259721402656608",

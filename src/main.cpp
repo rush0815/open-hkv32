@@ -16,6 +16,7 @@
 #include "platform/button.h"
 #include "platform/esp32_basics.h"
 #include "platform/power.h"
+#include "platform/reference_sensor.h"
 #include "platform/serial_telegram_sink.h"
 #include "platform/tinypico_battery.h"
 
@@ -33,8 +34,10 @@ namespace {
 port::Esp32Clock g_clock;
 port::Esp32Storage g_storage;
 port::Esp32Random g_random;
+port::HeapMemory g_memory;
 port::TinyPicoBattery g_battery;
 port::Bmp280RoomSensor g_room(Wire);
+port::ReferenceSensor g_reference(Wire, g_room);  // only plugged in for the calibration run
 
 #if HKV_RADIATOR_SENSOR == 0
 hkv::EmulatedRadiatorConfig makeEmulationConfig() {
@@ -57,7 +60,8 @@ hkv::IDisplay* const g_displayPtr = nullptr;
 hkv::SoftAes128 g_aes;
 port::SerialTelegramSink g_sink;
 
-hkv::HkvApp g_app(hkv::Hal{g_clock, g_radiator, g_room, g_battery, g_storage, g_displayPtr, &g_aes, &g_sink});
+hkv::HkvApp g_app(hkv::Hal{g_clock, g_radiator, g_room, g_battery, g_storage, g_displayPtr, &g_aes, &g_sink,
+                            &g_reference, &g_memory});
 net::NetManager g_net(g_app, g_storage);
 port::Button g_button(board::kButton, HKV_LONG_PRESS_MS);
 port::Button g_wifiButton(board::kWifiButton, HKV_LONG_PRESS_MS);

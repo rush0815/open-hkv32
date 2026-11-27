@@ -32,6 +32,8 @@ const char* countStateName(CountState s) {
     case CountState::Counting: return "counting";
     case CountState::Summer: return "summer";
     case CountState::SensorError: return "sensor_error";
+    case CountState::Uncalibrated: return "uncalibrated";
+    case CountState::Calibrating: return "calibrating";
   }
   return "?";
 }

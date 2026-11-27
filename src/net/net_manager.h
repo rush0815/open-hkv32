@@ -105,6 +105,7 @@ class NetManager {
   void handleLive();
   void handleSetTime();
   void handleAction();
+  String calibJson() const;
   void handleApiStatus();
   void handleApiTelegram();
   void handleNotFound();
@@ -131,6 +132,8 @@ class NetManager {
 
   uint32_t mqttLastTry_ = 0;
   uint32_t mqttLastPublish_ = 0;
+  uint32_t mqttFailedAt_ = 0;   // last failed publish (retry after kMqttRetryMs, not in every loop)
+  bool mqttLastFailed_ = false;
   bool mqttPublishedOnce_ = false;
   PowerSettings pw_;
   bool wakeArmed_ = false;

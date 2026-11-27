@@ -47,7 +47,10 @@ void HkvApp::begin(uint32_t defaultMeterId) {
       uint16_t version;
       size_t size;
     };
-    const OldVersion olds[] = {{4, offsetof(Settings, roomCouplingTauMin)},
+    static_assert(offsetof(Settings, calibrated) % alignof(Settings) == 0,
+                  "settings migration assumes v5 size == offset of the first v6 field");
+    const OldVersion olds[] = {{5, offsetof(Settings, calibrated)},
+                               {4, offsetof(Settings, roomCouplingTauMin)},
                                {3, offsetof(Settings, roomCoupling)},
                                {2, offsetof(Settings, displayInvert)},
                                {1, offsetof(Settings, emissivity)}};
@@ -181,6 +184,7 @@ void HkvApp::poll() {
   if (dirty_) saveData(false);
 
   if (liveActive() && hal_.clock.uptimeMs() - lastLiveMs_ >= kLiveIntervalMs) liveMeasure();
+  if (calib_.state == CalibState::Running && reached(hal_.clock.uptimeMs(), nextCalibMs_)) calibrationSample();
 
   if (displayOn_) {
     if (reached(now, displayOffAtMs_)) {
@@ -210,6 +214,10 @@ uint32_t HkvApp::msUntilNextEvent() const {
     const uint32_t l = left(lastLiveMs_ + kLiveIntervalMs);
     if (l < ms) ms = l;
   }
+  if (calib_.state == CalibState::Running) {
+    const uint32_t c = left(nextCalibMs_);
+    if (c < ms) ms = c;
+  }
   return ms;
 }
 
@@ -232,6 +240,7 @@ void HkvApp::measure() {
   // Rectangle rule: the rate at the end of the interval is applied to the whole interval.
   updateRadiatorLag(snap_.radiatorRaw);
   snap_.alloc = evaluate(settings_, snap_.radiatorRaw, snap_.roomRaw, summer, radiatorLagC_);
+  gateCounting(snap_.alloc);
   const uint64_t milliBefore = data_.currentMilliUnits;
   ledger_.accumulate(snap_.alloc.unitsPerHour, dtS);
   if (timeValid) {
@@ -270,7 +279,7 @@ void HkvApp::measure() {
 
 bool HkvApp::liveActive() const {
   const bool kept = static_cast<int32_t>(liveUntilMs_ - hal_.clock.uptimeMs()) > 0;
-  return kept || (displayOn_ && page_ == Page::Temperatures);
+  return kept || (displayOn_ && (page_ == Page::Temperatures || page_ == Page::Calibration));
 }
 
 void HkvApp::keepLiveAlive(uint32_t keepMs) {
@@ -299,13 +308,170 @@ void HkvApp::liveMeasure() {
   lastLiveMs_ = hal_.clock.uptimeMs();
   live_.radiatorRaw = hal_.radiator.read();
   live_.roomRaw = hal_.room.read();
+  live_.referenceRaw = TempReading{};
+  if (calib_.state == CalibState::Running && hal_.reference) live_.referenceRaw = hal_.reference->read();
   DateTime local;
   const bool summer = localTime(local) && isSummer(settings_, local.month);
   updateRadiatorLag(live_.radiatorRaw);
   live_.alloc = evaluate(settings_, live_.radiatorRaw, live_.roomRaw, summer, radiatorLagC_);
+  gateCounting(live_.alloc);
   live_.uptimeMs = lastLiveMs_;
   live_.valid = true;
   if (displayOn_) refreshDisplay();
+}
+
+// ---------------- calibration run
+
+// No counting before the first calibration run and while a run is in progress.
+void HkvApp::gateCounting(AllocResult& a) const {
+  if (a.state == CountState::SensorError) return;
+  if (calib_.state == CalibState::Running) {
+    a.state = CountState::Calibrating;
+  } else if (!calibrated()) {
+    a.state = CountState::Uncalibrated;
+  } else {
+    return;
+  }
+  a.unitsPerHour = 0.0f;
+}
+
+bool HkvApp::readReference(TempReading& r) {
+  r = TempReading{};
+  if (!hal_.reference) return false;
+  r = hal_.reference->read();  // the port's driver probes again if it was not found before
+  return r.valid;
+}
+
+const char* HkvApp::startCalibration(uint32_t durationS) {
+  if (!hal_.reference) return "no reference sensor port";
+  if (calib_.state == CalibState::Running) return "calibration already running";
+  if (durationS < kCalibMinS || durationS > kCalibMaxS) return "duration out of range";
+  TempReading ref;
+  if (!readReference(ref)) return "reference sensor not found";
+  calib_ = CalibStatus{};
+  calib_.state = CalibState::Running;
+  calib_.durationS = durationS;
+  calib_.warmupS = CouplingCalibrator::warmupFor(durationS);
+  calibStartOffset_ = settings_.roomOffsetC;
+  calibStartCoupling_ = settings_.roomCoupling;
+  calibStartTau_ = settings_.roomCouplingTauMin;
+  calibrator_.start(calibStartOffset_, calibStartCoupling_, calibStartTau_, static_cast<float>(calib_.warmupS));
+  releaseCalibBuffer();
+  if (hal_.memory) {
+    calibCap_ = durationS / (kCalibSampleMs / 1000u) + 8u;
+    calibBuf_ = static_cast<CalibSample*>(hal_.memory->acquire(calibCap_ * sizeof(CalibSample)));
+    if (!calibBuf_) {
+      calibCap_ = 0;
+      HKV_LOG("calibration: no memory for the samples - fit without outlier check");
+    }
+  }
+  calibLen_ = 0;
+  calib_.lastReference = ref;
+  calibStartMs_ = hal_.clock.uptimeMs();
+  calibFirst_ = true;
+  HKV_LOG("calibration run started (%lu min, reference %s %.2f C)", static_cast<unsigned long>(durationS / 60),
+          hal_.reference->name(), static_cast<double>(ref.celsius));
+  calibrationSample();  // first sample at once: even a run ended right away has data
+  measureDue_ = true;   // state "calibrating" visible at once
+  showPage(Page::Calibration);
+  return nullptr;
+}
+
+void HkvApp::stopCalibration() {
+  if (calib_.state == CalibState::Running) finishCalibration(CalibState::Aborted, CalibAbort::User);
+}
+
+void HkvApp::releaseCalibBuffer() {
+  if (calibBuf_ && hal_.memory) hal_.memory->release(calibBuf_);
+  calibBuf_ = nullptr;
+  calibCap_ = calibLen_ = 0;
+}
+
+void HkvApp::finishCalibration(CalibState st, CalibAbort why) {
+  calib_.state = st;
+  calib_.abort = why;
+  if (calibBuf_ && calibLen_ > 0) {
+    // stored samples: second pass with outlier rejection, then the memory goes back
+    calib_.result = fitWithOutlierRejection(calibBuf_, calibLen_, calibStartOffset_, calibStartCoupling_,
+                                            calibStartTau_, static_cast<float>(calib_.warmupS));
+  } else {
+    calib_.result = calibrator_.result();
+  }
+  releaseCalibBuffer();
+  const CalibResult& r = calib_.result;
+  applyCalibration();
+  measureDue_ = true;  // counting starts now
+  if (displayOn_ && page_ == Page::Calibration) {
+    displayOffAtMs_ = hal_.clock.uptimeMs() + settings_.displayTimeoutS * 1000u;  // show the result
+    refreshDisplay();
+  }
+  HKV_LOG("calibration run %s (reason %u): samples=%lu outliers=%lu span=%.1fK solved=%u offset=%.2f c=%.3f tau=%.0f rms %.2f -> %.2f K",
+          st == CalibState::Done ? "done" : "aborted", static_cast<unsigned>(why), static_cast<unsigned long>(r.samples),
+          static_cast<unsigned long>(r.outliers),
+          static_cast<double>(r.spanK), r.couplingSolved ? 1u : 0u, static_cast<double>(r.offsetC),
+          static_cast<double>(r.coupling), static_cast<double>(r.tauMin), static_cast<double>(r.rmsBeforeK),
+          static_cast<double>(r.rmsAfterK));
+}
+
+void HkvApp::calibrationSample() {
+  const uint32_t now = hal_.clock.uptimeMs();
+  nextCalibMs_ = now + kCalibSampleMs;
+  calib_.elapsedS = (now - calibStartMs_) / 1000u;
+  const TempReading rad = hal_.radiator.read();
+  const TempReading room = hal_.room.read();
+  TempReading ref;
+  readReference(ref);
+  calib_.lastReference = ref;
+  calib_.lastRadiatorC = rad.valid ? rad.celsius + settings_.radiatorOffsetC : NAN;
+  calib_.lastRoomRawC = room.valid ? room.celsius : NAN;
+  if (!ref.valid || !rad.valid || !room.valid) {
+    if (++calib_.missedInRow >= kCalibMaxMissed) {
+      finishCalibration(CalibState::Aborted, ref.valid ? CalibAbort::SensorLost : CalibAbort::ReferenceLost);
+    }
+    return;
+  }
+  calib_.missedInRow = 0;
+  const float dtS = calibFirst_ ? 0.0f : static_cast<float>(now - lastCalibSampleMs_) / 1000.0f;
+  calibFirst_ = false;
+  lastCalibSampleMs_ = now;
+  calibrator_.add(calib_.lastRadiatorC, room.celsius, ref.celsius, dtS);
+  if (calibBuf_ && calibLen_ < calibCap_) {
+    calibBuf_[calibLen_++] = makeCalibSample(calib_.lastRadiatorC, room.celsius, ref.celsius, calib_.elapsedS);
+  }
+  calib_.samplesRead++;
+  HKV_LOG("calib t=%lus rad=%.2f room_raw=%.2f ref=%.2f", static_cast<unsigned long>(calib_.elapsedS),
+          static_cast<double>(calib_.lastRadiatorC), static_cast<double>(room.celsius),
+          static_cast<double>(ref.celsius));
+  if (calib_.elapsedS >= calib_.durationS) {
+    finishCalibration(CalibState::Done, CalibAbort::None);
+  } else if ((calib_.samplesRead % 10u) == 0) {
+    calib_.result = calibrator_.result();  // interim result for the web UI
+  }
+}
+
+// Writes the result to the settings and marks the meter as calibrated (it counts from now
+// on). Without any valid sample the correction values stay as they are.
+void HkvApp::applyCalibration() {
+  const CalibResult& r = calib_.result;
+  Settings s = settings_;
+  s.calibrated = 1;
+  if (r.valid) s.roomOffsetC = roundf(r.offsetC * 100.0f) / 100.0f;
+  if (r.valid && r.couplingSolved) {
+    s.roomCoupling = roundf(r.coupling * 100.0f) / 100.0f;  // web form uses steps of 0.01
+    s.roomCouplingTauMin = r.tauMin;
+  }
+  const char* err = applySettings(s);
+  if (err) {
+    // e.g. an implausible offset outside the settings range: keep the values, still count
+    HKV_LOG("calibration: result not applicable (%s) - values unchanged", err);
+    s = settings_;
+    s.calibrated = 1;
+    applySettings(s);
+    return;
+  }
+  calib_.applied = r.valid;
+  HKV_LOG("calibration applied: offset=%.2f c=%.3f tau=%.0f - meter counts", static_cast<double>(s.roomOffsetC),
+          static_cast<double>(s.roomCoupling), static_cast<double>(s.roomCouplingTauMin));
 }
 
 uint8_t HkvApp::omsStatus() const {
@@ -430,9 +596,18 @@ bool HkvApp::deleteMonthly(uint16_t year, uint8_t month) {
 }
 
 void HkvApp::buttonShortPress() {
+  if (!displayOn_ && calib_.state == CalibState::Running) {
+    showPage(Page::Calibration);  // the next press continues with the normal cycle
+    return;
+  }
   if (!displayOn_) {
     // A low battery is announced first, the next press continues with the normal cycle.
     showPage((snap_.errors & kErrBatteryLow) ? Page::BatteryLow : Page::Consumption);
+    return;
+  }
+  // During a calibration run its page is part of the cycle (after the network page).
+  if (calib_.state == CalibState::Running && page_ == Page::Network) {
+    showPage(Page::Calibration);
     return;
   }
   const uint8_t count = static_cast<uint8_t>(Page::Count);
@@ -441,7 +616,8 @@ void HkvApp::buttonShortPress() {
 }
 
 void HkvApp::showPage(Page page) {
-  const bool enteringTemps = page == Page::Temperatures && !(displayOn_ && page_ == Page::Temperatures);
+  const bool livePage = page == Page::Temperatures || page == Page::Calibration;
+  const bool enteringTemps = livePage && !(displayOn_ && page_ == page);
   page_ = page;
   if (enteringTemps) lastLiveMs_ = hal_.clock.uptimeMs() - kLiveIntervalMs;  // live value at once
   displayOn_ = true;
@@ -489,6 +665,19 @@ void HkvApp::refreshDisplay() {
   m.batteryLow = (snap_.errors & kErrBatteryLow) != 0;
   m.errors = snap_.errors;
   m.net = net_;
+  m.calib.state = static_cast<uint8_t>(calib_.state);
+  m.calib.elapsedS = calib_.state == CalibState::Running ? (hal_.clock.uptimeMs() - calibStartMs_) / 1000u : calib_.elapsedS;
+  m.calib.durationS = calib_.durationS;
+  m.calib.warmupS = calib_.warmupS;
+  const bool liveCal = useLive && calib_.state == CalibState::Running && live_.referenceRaw.valid;
+  m.calib.radiatorC = liveCal ? (live_.radiatorRaw.valid ? live_.radiatorRaw.celsius + settings_.radiatorOffsetC : NAN)
+                              : calib_.lastRadiatorC;
+  m.calib.roomRawC = liveCal ? (live_.roomRaw.valid ? live_.roomRaw.celsius : NAN) : calib_.lastRoomRawC;
+  m.calib.referenceC = liveCal ? live_.referenceRaw.celsius
+                               : (calib_.lastReference.valid ? calib_.lastReference.celsius : NAN);
+  if (hal_.reference) {
+    strncpy(m.calib.refName, hal_.reference->name(), sizeof(m.calib.refName) - 1);
+  }
   hal_.display->show(m);
 }
 

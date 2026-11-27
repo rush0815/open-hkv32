@@ -16,7 +16,17 @@ class Bmp280RoomSensor : public hkv::ITemperatureSensor {
   explicit Bmp280RoomSensor(TwoWire& wire) : bmp_(&wire) {}
 
   bool begin() override {
-    ready_ = bmp_.begin(0x76) || bmp_.begin(0x77);
+    // Once found, stay on that address: a reference BMP280 for the calibration run may
+    // sit on the other one (see reference_sensor.h).
+    if (addr_) {
+      ready_ = bmp_.begin(addr_);
+    } else if (bmp_.begin(0x76)) {
+      addr_ = 0x76;
+      ready_ = true;
+    } else if (bmp_.begin(0x77)) {
+      addr_ = 0x77;
+      ready_ = true;
+    }
     if (ready_) {
       bmp_.setSampling(Adafruit_BMP280::MODE_FORCED, Adafruit_BMP280::SAMPLING_X2,
                        Adafruit_BMP280::SAMPLING_X4, Adafruit_BMP280::FILTER_OFF,
@@ -41,9 +51,11 @@ class Bmp280RoomSensor : public hkv::ITemperatureSensor {
   }
 
   const char* name() const override { return "BMP280"; }
+  uint8_t address() const { return addr_; }  // 0 = not found yet
 
  private:
   Adafruit_BMP280 bmp_;
+  uint8_t addr_ = 0;
   bool ready_ = false;
 };
 

@@ -73,6 +73,11 @@ struct Settings {
   // The coupling term therefore uses the radiator temperature low-pass filtered with
   // this time constant. 0 = no filtering.
   float roomCouplingTauMin;
+
+  // --- added in settings version 6 ---
+  // 1 = the calibration run (room sensor against a reference sensor) has been done.
+  // A meter only counts once calibrated; new and migrated devices start with 0.
+  uint8_t calibrated;
 };
 
 void setDefaults(Settings& s, uint32_t defaultMeterId);

@@ -16,5 +16,4 @@ src/net/web_index.h
 # local, not part of the project
 .claude/
 start.sh
-hkv_tinypico_v2_project.zip
 .gitignore.optional

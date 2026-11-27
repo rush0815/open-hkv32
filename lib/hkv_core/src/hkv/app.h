@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "hkv/allocator.h"
+#include "hkv/calibration.h"
 #include "hkv/display_model.h"
 #include "hkv/hal.h"
 #include "hkv/ledger.h"
@@ -24,6 +25,12 @@ struct Hal {
   IDisplay* display;      // optional
   IBlockCipher* cipher;   // required for OMS mode 5
   ITelegramSink* sink;    // optional
+  // Optional temporary reference room sensor for the calibration run (plugged in only
+  // for calibration). May be nullptr if the port has none.
+  ITemperatureSensor* reference = nullptr;
+  // Optional working memory: the calibration run stores its samples there (10 bytes per
+  // 30 s, ~2.4 KB for 2 h) for the outlier check, and releases it when the run has ended.
+  IMemory* memory = nullptr;
 };
 
 // Display-only readings ("live mode"): taken every 2 s while someone is watching.
@@ -32,6 +39,7 @@ struct LiveValues {
   bool valid = false;
   TempReading radiatorRaw;
   TempReading roomRaw;
+  TempReading referenceRaw;  // only while a calibration run is in progress
   AllocResult alloc;
   uint32_t uptimeMs = 0;
 };
@@ -47,6 +55,25 @@ struct Snapshot {
   uint32_t uptimeMs = 0;
 };
 
+enum class CalibState : uint8_t { Idle = 0, Running = 1, Done = 2, Aborted = 3 };
+enum class CalibAbort : uint8_t { None = 0, User = 1, ReferenceLost = 2, SensorLost = 3 };
+
+// Calibration run of the room sensor against the reference sensor (see calibration.h).
+struct CalibStatus {
+  CalibState state = CalibState::Idle;
+  CalibAbort abort = CalibAbort::None;
+  uint32_t durationS = 0;
+  uint32_t elapsedS = 0;
+  uint32_t warmupS = 0;       // first part of the run: filters settle, not used for c / tau
+  uint32_t samplesRead = 0;   // all samples incl. warm-up
+  uint8_t missedInRow = 0;
+  TempReading lastReference;  // last readings of the run (radiator incl. offset)
+  float lastRadiatorC = NAN;
+  float lastRoomRawC = NAN;
+  CalibResult result;         // interim while running, final (and applied) when finished
+  bool applied = false;       // result written to the settings
+};
+
 class HkvApp {
  public:
   explicit HkvApp(const Hal& hal) : hal_(hal), ledger_(data_) {}
@@ -59,6 +86,7 @@ class HkvApp {
   void buttonShortPress();
   void showPage(Page page);  // also switches the display on
   bool displayActive() const { return displayOn_; }
+  Page page() const { return page_; }
   void setNetInfo(const NetInfo& info) { net_ = info; }
 
   // --- live mode (display only) ---
@@ -85,6 +113,24 @@ class HkvApp {
   // further writes, so nothing is written back before the port restarts the device.
   void eraseStoredData();
   void requestMeasurement() { measureDue_ = true; }
+
+  // --- calibration run with a temporary reference room sensor ---
+  static constexpr uint32_t kCalibSampleMs = 30000;
+  static constexpr uint32_t kCalibMinS = 60u, kCalibMaxS = 12u * 3600u;
+  static constexpr uint8_t kCalibMaxMissed = 10;  // ~5 min without valid readings -> abort
+  bool hasReferencePort() const { return hal_.reference != nullptr; }
+  // Probes the reference sensor (hot plug). Fills r; false if none answers.
+  bool readReference(TempReading& r);
+  const char* referenceName() const { return hal_.reference ? hal_.reference->name() : ""; }
+  // A meter counts only after a calibration run. The run is always started by hand and
+  // ends by itself after durationS; the result is computed and applied at once, then the
+  // meter counts. Ended early (by hand or because a sensor is lost), the values are
+  // computed from the data collected so far and applied just the same.
+  const char* startCalibration(uint32_t durationS);  // nullptr = started, otherwise error text
+  void stopCalibration();  // ends the run early (development version)
+  bool calibrated() const { return settings_.calibrated != 0; }
+  bool counting() const { return calibrated() && calib_.state != CalibState::Running; }
+  const CalibStatus& calibration() const { return calib_; }
   void requestTelegram() { telegramDue_ = true; }
 
   // --- state ---
@@ -98,7 +144,7 @@ class HkvApp {
   }
   bool monthlyValue(int ageIndex, MonthlyValue& out) const { return ledger_.monthlyValue(ageIndex, out); }
 
-  static constexpr uint16_t kSettingsVersion = 5;
+  static constexpr uint16_t kSettingsVersion = 6;
   static constexpr uint16_t kDataVersion = 5;
 
  private:
@@ -140,6 +186,21 @@ class HkvApp {
   void updateRadiatorLag(const TempReading& rad);
   uint32_t liveUntilMs_ = 0;
   uint32_t lastLiveMs_ = 0;
+
+  void calibrationSample();
+  void finishCalibration(CalibState st, CalibAbort why);
+  void applyCalibration();
+  void gateCounting(AllocResult& a) const;
+  CouplingCalibrator calibrator_;
+  CalibStatus calib_;
+  uint32_t calibStartMs_ = 0;
+  uint32_t nextCalibMs_ = 0;
+  uint32_t lastCalibSampleMs_ = 0;
+  bool calibFirst_ = true;
+  float calibStartOffset_ = 0.0f, calibStartCoupling_ = 0.0f, calibStartTau_ = 0.0f;
+  CalibSample* calibBuf_ = nullptr;  // from hal_.memory, only while a run is in progress
+  size_t calibCap_ = 0, calibLen_ = 0;
+  void releaseCalibBuffer();
 
   uint8_t telegram_[oms::kMaxFrame] = {0};
   size_t telegramLen_ = 0;

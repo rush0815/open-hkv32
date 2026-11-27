@@ -16,6 +16,7 @@ enum class Page : uint8_t {
   Network,          // connection / setup / connecting / failed (depends on NetInfo::mode)
   Count,            // number of pages in the button cycle
   BatteryLow,       // warning, shown before the cycle when the battery is low
+  Calibration,      // calibration run: progress and sensor values (shown first while it runs)
 };
 
 // Error flags (also used for the OMS status byte).
@@ -84,6 +85,18 @@ struct DisplayModel {
   uint32_t errors = 0;
 
   NetInfo net;
+
+  // Calibration run (page Calibration). Temperatures: raw values, NAN = not available.
+  struct Calib {
+    uint8_t state = 0;          // CalibState: 0 idle, 1 running, 2 done, 3 ended early
+    uint32_t elapsedS = 0;
+    uint32_t durationS = 0;
+    uint32_t warmupS = 0;
+    float radiatorC = NAN;      // incl. radiator offset
+    float roomRawC = NAN;       // built-in room sensor without offset
+    float referenceC = NAN;
+    char refName[8] = {0};
+  } calib;
 };
 
 }  // namespace hkv

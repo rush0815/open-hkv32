@@ -21,6 +21,8 @@ enum class CountState : uint8_t {
   Counting = 1,
   Summer = 2,       // suppressed by summer threshold
   SensorError = 3,  // radiator temperature unavailable
+  Uncalibrated = 4, // no calibration run yet - the meter does not count
+  Calibrating = 5,  // calibration run in progress - no counting
 };
 
 const char* countStateName(CountState s);

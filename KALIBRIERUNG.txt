@@ -1,0 +1,57 @@
+Kalibrierlauf des Raumfuehlers (mit Referenzfuehler)
+====================================================
+
+Jeder Zaehler muss vor der Inbetriebnahme kalibriert werden - vorher zaehlt er nicht.
+Start: Weboberflaeche -> Service -> Kalibrierung Fuehler -> Dauer (min) -> Starten.
+Der Lauf endet von selbst, die Werte (Offset Raum, Kopplung c, Zeitkonstante tau)
+werden sofort uebernommen, danach zaehlt der Zaehler.
+
+
+Vorbereitung
+------------
+- Heizkoerper vollstaendig abkuehlen lassen (etwa Raumtemperatur, gut 1-2 h aus).
+- Referenzfuehler (SHT40/STS40 an 0x44-0x46 oder zweiter BMP280 an 0x77) an den
+  I2C-Bus stecken (Anschluss siehe PINBELEGUNG.txt) und mit "Fuehler pruefen" testen.
+- Referenzfuehler frei aufhaengen: mindestens 1 m vom Heizkoerper, etwa auf Hoehe
+  des Geraets, nicht in Sonne, Zugluft oder ueber dem Heizkoerper.
+- Beide Zaehlerstaende notieren (eigenes Geraet und Vergleichsgeraet).
+- Tueren und Fenster waehrend des Laufs moeglichst geschlossen halten.
+
+
+Ablauf (Dauer 180 min)
+----------------------
+
+  Zeit           Was tun                          Wozu
+  -------------  -------------------------------  ----------------------------------------
+  0 - 20 min     nichts, Heizkoerper bleibt kalt  Einschwingen (10 min), danach kalte
+                                                  Basis fuer den Offset
+  ab ~20 min     Heizung an, Thermostat voll auf  Aufheizen - wichtigster Teil fuer c und tau
+  ~20 - 140 min  laufen lassen                    warme Phase
+  ~140 - 180 min Thermostat zu                    Abkuehlen - zusaetzliche Information fuer tau
+
+Taktet die Heizungsanlage (Wasser wird zyklisch durchgepumpt), stoert das nicht -
+jeder Zyklus ist ein weiterer Temperatursprung und hilft bei c und tau.
+Deshalb lieber 180 min als 120 min.
+
+
+Ergebnis pruefen
+----------------
+- Unter "Kopplung c" steht ein Wert (nicht "nicht bestimmbar").
+  Sonst hat sich der Heizkoerper nach dem Einschwingen um weniger als 8 K veraendert.
+- "Abweichung nachher" unter etwa +-0,3 K.
+  Deutlich darueber: Lauf vermutlich gestoert (Sonne, Zugluft, Lueften) - wiederholen.
+- "Ausreisser verworfen": einzelne gestoerte Messpunkte wurden automatisch entfernt
+  (hoechstens 10 %).
+- Danach kann der Referenzfuehler wieder abgezogen werden.
+
+
+Hinweise
+--------
+- Die Einschwingzeit betraegt 10 min, bei kurzen Laeufen ein Drittel der Laufzeit.
+  Fuer c und tau braucht es danach noch mindestens 5 min, sonst wird nur der Offset bestimmt.
+- In der Entwicklerversion kann der Lauf vorzeitig beendet werden ("Vorzeitig beenden").
+  Die Werte werden dann aus den bisherigen Daten berechnet und ebenfalls sofort uebernommen.
+  Das passiert auch, wenn der Referenzfuehler ca. 5 min nicht antwortet.
+- Waehrend des Laufs zaehlt der Zaehler nicht.
+- Genauigkeit der Referenz geht voll in die Messung ein: BMP280 +-1 K (bei dT = 30 K
+  etwa +-4 % in den Einheiten), SHT40/STS40 +-0,2 K (etwa +-1 %).

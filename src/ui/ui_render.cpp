@@ -270,6 +270,8 @@ void stateTitle(hkv::CountState s, const char*& t, uint16_t& c) {
     case hkv::CountState::Counting: t = "Zählt"; c = kGreen; return;
     case hkv::CountState::Summer: t = "Sommer"; c = kOrange; return;
     case hkv::CountState::SensorError: t = "Fühlerfehler"; c = kRed; return;
+    case hkv::CountState::Uncalibrated: t = "Nicht kalibriert"; c = kOrange; return;
+    case hkv::CountState::Calibrating: t = "Kalibrierung"; c = kOrange; return;
     case hkv::CountState::Idle: break;
   }
   t = "Ruhe";
@@ -310,7 +312,11 @@ void pageOverview(Painter& p, const DisplayModel& m) {
   p.text(x + w + 4, 38, kGrey, "VE");
 
   p.g().drawFastHLine(0, 53, kWidth, kLine);
-  if (m.dueDateValid) {
+  if (m.alloc.state == hkv::CountState::Uncalibrated) {
+    p.center(66, kOrange, "Nicht kalibriert!");
+  } else if (m.alloc.state == hkv::CountState::Calibrating) {
+    p.center(66, kOrange, "Kalibrierung läuft");
+  } else if (m.dueDateValid) {
     fmtUnits(m.dueMilliUnits, b, sizeof(b));
     const int lw = p.textWidth("Vorperiode");
     const int vw = p.fontWidth(&FreeSansBold9pt7b, b);
@@ -468,6 +474,55 @@ void pageBatteryLow(Painter& p, const DisplayModel& m) {
   p.text(42 + w + 3, 69, kGrey, "VE");
 }
 
+// Calibration run: the three sensors (radiator, built-in room sensor raw, reference),
+// progress bar and remaining time; afterwards the result state.
+void pageCalibration(Painter& p, const DisplayModel& m) {
+  const DisplayModel::Calib& c = m.calib;
+  const bool running = c.state == 1;
+  header(p, m, "Kalibrierung", running ? kOrange : kGreen);
+  char ref[24];
+  snprintf(ref, sizeof(ref), "Referenz %s", c.refName[0] ? c.refName : "");
+  const char* labels[3] = {"Heizkörper", "Raumfühler roh", ref};
+  const float vals[3] = {c.radiatorC, c.roomRawC, c.referenceC};
+  for (int i = 0; i < 3; ++i) {
+    const int y = kTop + 2 + i * 11;
+    p.text(4, y, kGrey, labels[i]);
+    char b[16];
+    if (isnan(vals[i])) {
+      snprintf(b, sizeof(b), "--,-- °C");
+    } else {
+      snprintf(b, sizeof(b), "%.2f °C", static_cast<double>(vals[i]));
+      for (char* q = b; *q; ++q)
+        if (*q == '.') *q = ',';
+    }
+    p.right(kWidth - 4, y, i == 2 ? kGreen : kWhite, b);
+  }
+  const uint32_t el = c.elapsedS < c.durationS ? c.elapsedS : c.durationS;
+  const int barW = kWidth - 8;
+  const int fill = c.durationS ? static_cast<int>(static_cast<uint64_t>(barW) * el / c.durationS) : 0;
+  p.g().fillRect(4, 53, barW, 4, kDarkGrey);
+  p.g().fillRect(4, 53, running ? fill : barW, 4, running ? kOrange : kGreen);
+  char t[32];
+  if (running) {
+    const uint32_t left = (c.durationS - el + 59) / 60;  // minutes, rounded up
+    if (left >= 60) snprintf(t, sizeof(t), "Lauf noch %lu h %02lu min", static_cast<unsigned long>(left / 60), static_cast<unsigned long>(left % 60));
+    else snprintf(t, sizeof(t), "Lauf noch %lu min", static_cast<unsigned long>(left));
+    if (c.elapsedS < c.warmupS) {
+      const int wx = 4 + static_cast<int>(static_cast<uint64_t>(barW) * c.warmupS / (c.durationS ? c.durationS : 1));
+      p.g().drawFastVLine(wx, 51, 8, kWhite);  // end of the warm-up on the bar
+      p.center(60, kWhite, t);
+      char w[32];
+      snprintf(w, sizeof(w), "Einschwingen noch %lu min",
+               static_cast<unsigned long>((c.warmupS - c.elapsedS + 59) / 60));
+      p.center(70, kGrey, w);
+    } else {
+      p.center(64, kWhite, t);
+    }
+  } else {
+    p.center(64, kGreen, c.state == 2 ? "Fertig - zählt jetzt" : "Beendet - zählt jetzt");
+  }
+}
+
 }  // namespace
 
 void render(Adafruit_GFX& g, const DisplayModel& m, const QrMatrix* qr) {
@@ -479,6 +534,7 @@ void render(Adafruit_GFX& g, const DisplayModel& m, const QrMatrix* qr) {
     case Page::Consumption: pageOverview(p, m); break;
     case Page::Temperatures: pageTemperatures(p, m); break;
     case Page::BatteryLow: pageBatteryLow(p, m); break;
+    case Page::Calibration: pageCalibration(p, m); break;
     case Page::Network:
     case Page::Count:
       switch (m.net.mode) {

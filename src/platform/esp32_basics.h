@@ -10,6 +10,13 @@
 
 namespace port {
 
+// Temporary working memory for the core (calibration run samples), released after use.
+class HeapMemory : public hkv::IMemory {
+ public:
+  void* acquire(size_t bytes) override { return malloc(bytes); }
+  void release(void* p) override { free(p); }
+};
+
 class Esp32Clock : public hkv::IClock {
  public:
   uint32_t nowUtc() override { return static_cast<uint32_t>(time(nullptr)); }

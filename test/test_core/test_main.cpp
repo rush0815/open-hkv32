@@ -1,5 +1,7 @@
 // Native unit tests for the portable core:  pio test -e native
+#include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unity.h>
 
@@ -11,6 +13,7 @@
 #include "hkv/allocator.h"
 #include "hkv/app.h"
 #include "hkv/calendar.h"
+#include "hkv/calibration.h"
 #include "hkv/ledger.h"
 #include "hkv/oms.h"
 #include "hkv/persist.h"
@@ -61,6 +64,21 @@ class FixedSensor : public ITemperatureSensor {
   const char* name() const override { return "fixed"; }
 };
 
+class FakeMemory : public IMemory {
+ public:
+  int outstanding = 0;
+  size_t lastBytes = 0;
+  void* acquire(size_t bytes) override {
+    ++outstanding;
+    lastBytes = bytes;
+    return malloc(bytes);
+  }
+  void release(void* p) override {
+    --outstanding;
+    free(p);
+  }
+};
+
 class FakeBattery : public IBattery {
  public:
   bool begin() override { return true; }
@@ -82,6 +100,13 @@ class CaptureSink : public ITelegramSink {
     ++count;
   }
 };
+
+// A meter only counts after its calibration run - tests of the counting skip it.
+static void markCalibrated(HkvApp& app) {
+  Settings s = app.settings();
+  s.calibrated = 1;
+  TEST_ASSERT_NULL(app.applySettings(s));
+}
 
 static Settings defaults() {
   Settings s;
@@ -318,6 +343,7 @@ void test_app_counts_and_sends() {
   Hal hal{clock, rad, room, bat, st, nullptr, &aes, &sink};
   HkvApp app(hal);
   app.begin(87654321);
+  markCalibrated(app);
   clock.setUtc(1764547200);  // 2025-12-01 00:00 UTC
   for (int i = 0; i < 2 * 3600; ++i) {  // 2 h in 1 s steps
     clock.ms += 1000;
@@ -622,6 +648,7 @@ void test_time_gap_tracking() {
   {  // first run: clock valid, last known time gets stored
     HkvApp app(hal);
     app.begin(1);
+    markCalibrated(app);
     clock.setUtc(1764547200);  // 2025-12-01 00:00 UTC
     for (int i = 0; i < 70; ++i) {
       clock.ms += 60000;
@@ -656,6 +683,298 @@ void test_time_gap_tracking() {
   TEST_ASSERT_EQUAL_UINT32(app.meterData().gapEndUtc, saved.gapEndUtc);
 }
 
+// Radiator heats up, stays warm, cools down; room sensor follows with c = 0.30, tau = 10 min
+// and reads 1.5 K too warm (self-heating). The fit must find these values again.
+void test_calibrator_recovers_parameters() {
+  const float trueC = 0.30f, trueTau = 10.0f, trueSelfHeat = 1.5f;
+  CouplingCalibrator cal;
+  cal.start(0.0f, 0.0f, 10.0f);  // settings before: no correction
+  float rad = 20.0f, lag = 20.0f;
+  const float dt = 30.0f;
+  for (int i = 0; i <= 150 * 2; ++i) {  // 150 min
+    const float tMin = i * dt / 60.0f;
+    const float target = tMin < 20 ? 20.0f : tMin < 90 ? 55.0f : 21.0f;
+    const float tauRad = tMin < 90 ? 8.0f : 25.0f;
+    if (i) rad += (target - rad) * (1.0f - expf(-dt / (tauRad * 60.0f)));
+    if (i) lag += (rad - lag) * (1.0f - expf(-dt / (trueTau * 60.0f)));
+    const float ref = 21.0f + tMin / 150.0f;  // room warms up by 1 K
+    const float noise = 0.03f * static_cast<float>((i * 7919) % 11 - 5) / 5.0f;
+    const float raw = trueSelfHeat + trueC * lag + (1.0f - trueC) * ref + noise;
+    cal.add(rad, raw, ref, i ? dt : 0.0f);
+  }
+  const CalibResult r = cal.result();
+  TEST_ASSERT_TRUE(r.valid);
+  TEST_ASSERT_TRUE(r.couplingSolved);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, trueC, r.coupling);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, -trueSelfHeat, r.offsetC);
+  TEST_ASSERT_EQUAL_FLOAT(trueTau, r.tauMin);
+  TEST_ASSERT_TRUE(r.rmsAfterK < 0.1f);
+  TEST_ASSERT_TRUE(r.rmsBeforeK > 5.0f);
+  TEST_ASSERT_TRUE(r.spanK > 30.0f);
+}
+
+// Radiator constant: offset and c can't be separated -> offset only, with the current c.
+void test_calibrator_offset_only() {
+  CouplingCalibrator cal;
+  cal.start(0.0f, 0.2f, 10.0f);
+  for (int i = 0; i < 100; ++i) cal.add(23.0f, 22.0f, 21.0f, i ? 30.0f : 0.0f);
+  const CalibResult r = cal.result();
+  TEST_ASSERT_TRUE(r.valid);
+  TEST_ASSERT_FALSE(r.couplingSolved);
+  // raw + o = c * rad + (1 - c) * ref = 21.4 -> o = -0.6
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -0.6f, r.offsetC);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.2f, r.coupling);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, r.rmsAfterK);
+}
+
+void test_app_calibration_run() {
+  FakeClock clock;
+  FixedSensor rad(70.0f), room(22.0f), ref(21.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  {  // port without reference sensor
+    Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr};
+    HkvApp app(hal);
+    app.begin(1);
+    TEST_ASSERT_NOT_NULL(app.startCalibration(3600));
+  }
+  st.kv.clear();
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr, &ref};
+  HkvApp app(hal);
+  app.begin(1);
+  // new meter: not calibrated -> does not count
+  TEST_ASSERT_FALSE(app.calibrated());
+  for (int i = 0; i < 60; ++i) {
+    clock.ms += 60000;
+    app.poll();
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(CountState::Uncalibrated), static_cast<int>(app.snapshot().alloc.state));
+  TEST_ASSERT_EQUAL_UINT64(0, app.meterData().currentMilliUnits);
+
+  ref.r.valid = false;
+  TEST_ASSERT_NOT_NULL(app.startCalibration(3600));  // reference not plugged in
+  ref.r.valid = true;
+  TEST_ASSERT_NOT_NULL(app.startCalibration(0));     // no duration
+  TEST_ASSERT_NULL(app.startCalibration(3600));
+  for (int i = 0; i < 60; ++i) {  // 30 min of the run: still no counting
+    clock.ms += 30000;
+    app.poll();
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(CountState::Calibrating), static_cast<int>(app.snapshot().alloc.state));
+  TEST_ASSERT_EQUAL_UINT64(0, app.meterData().currentMilliUnits);
+  for (int i = 0; i < 65; ++i) {  // run ends by itself after 60 min
+    clock.ms += 30000;
+    app.poll();
+  }
+  const CalibStatus& c = app.calibration();
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibState::Done), static_cast<int>(c.state));
+  TEST_ASSERT_TRUE(c.applied);
+  TEST_ASSERT_FALSE(c.result.couplingSolved);  // radiator constant -> offset only
+  TEST_ASSERT_TRUE(app.calibrated());
+  // applied at once: c = 0.0 -> offset = ref - raw = -1
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -1.0f, app.settings().roomOffsetC);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 21.0f, app.snapshot().alloc.roomC);
+  TEST_ASSERT_EQUAL(static_cast<int>(CountState::Counting), static_cast<int>(app.snapshot().alloc.state));
+  for (int i = 0; i < 60; ++i) {  // now it counts
+    clock.ms += 60000;
+    app.poll();
+  }
+  TEST_ASSERT_TRUE(app.meterData().currentMilliUnits > 500);
+  // persisted: still calibrated after a restart
+  HkvApp app2(hal);
+  app2.begin(1);
+  TEST_ASSERT_TRUE(app2.calibrated());
+}
+
+// Ended early by hand (dev version), even right after the start: values are computed from
+// the data so far, applied at once, and the meter counts.
+void test_app_calibration_stopped_early() {
+  FakeClock clock;
+  FixedSensor rad(70.0f), room(23.5f), ref(21.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr, &ref};
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_NULL(app.startCalibration(7200));
+  clock.ms += 30000;
+  app.poll();
+  app.stopCalibration();
+  const CalibStatus& c = app.calibration();
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibState::Aborted), static_cast<int>(c.state));
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibAbort::User), static_cast<int>(c.abort));
+  TEST_ASSERT_TRUE(c.applied);
+  TEST_ASSERT_EQUAL_UINT32(2, c.result.samples);
+  TEST_ASSERT_TRUE(app.calibrated());
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -2.5f, app.settings().roomOffsetC);
+  clock.ms += 1000;
+  app.poll();
+  TEST_ASSERT_EQUAL(static_cast<int>(CountState::Counting), static_cast<int>(app.snapshot().alloc.state));
+
+  // a new run, reference unplugged during it -> ends by itself, applies, counts
+  TEST_ASSERT_NULL(app.startCalibration(7200));
+  room.r.celsius = 22.5f;
+  clock.ms += 30000;
+  app.poll();
+  ref.r.valid = false;
+  for (int i = 0; i < HkvApp::kCalibMaxMissed; ++i) {
+    clock.ms += 30000;
+    app.poll();
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibState::Aborted), static_cast<int>(c.state));
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibAbort::ReferenceLost), static_cast<int>(c.abort));
+  TEST_ASSERT_TRUE(c.applied);
+  // start sample (23.5 C) and the one after (22.5 C) -> mean 23.0 -> offset -2.0
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, -2.0f, app.settings().roomOffsetC);
+  TEST_ASSERT_TRUE(app.counting());
+}
+
+// Settings v5 (device counting before calibration was mandatory): values are kept,
+// but the meter must be calibrated before it counts again.
+void test_settings_migration_v5() {
+  FakeClock clock;
+  FixedSensor rad(20.0f), room(20.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Settings v5;
+  setDefaults(v5, 77778888);
+  v5.roomCoupling = 0.43f;
+  v5.roomOffsetC = -1.2f;
+  TEST_ASSERT_TRUE(saveBlob(st, "settings", 5, &v5, offsetof(Settings, calibrated)));
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr};
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_EQUAL_UINT32(77778888, app.settings().meterId);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.43f, app.settings().roomCoupling);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, -1.2f, app.settings().roomOffsetC);
+  TEST_ASSERT_FALSE(app.calibrated());
+}
+
+// Short test runs: warm-up is a third of the run (max. 10 min), the fit still gets samples.
+void test_calibration_short_run_warmup() {
+  TEST_ASSERT_EQUAL_UINT32(600, CouplingCalibrator::warmupFor(7200));
+  TEST_ASSERT_EQUAL_UINT32(200, CouplingCalibrator::warmupFor(600));
+  FakeClock clock;
+  FixedSensor rad(70.0f), room(22.0f), ref(21.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr, &ref};
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_NULL(app.startCalibration(600));  // 10 min
+  TEST_ASSERT_EQUAL_UINT32(200, app.calibration().warmupS);
+  for (int i = 0; i < 21; ++i) {
+    clock.ms += 30000;
+    app.poll();
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibState::Done), static_cast<int>(app.calibration().state));
+  TEST_ASSERT_TRUE(app.calibration().result.samples >= CouplingCalibrator::kMinSamples);  // fit after warm-up
+}
+
+// During a calibration run the display still times out as usual, but the calibration page
+// is shown first when switched on and stays in the button cycle until the run has ended.
+void test_calibration_page_in_cycle() {
+  FakeClock clock;
+  FixedSensor rad(30.0f), room(22.0f), ref(21.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr, &ref};
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_NULL(app.startCalibration(1800));
+  TEST_ASSERT_TRUE(app.displayActive());
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Calibration), static_cast<int>(app.page()));
+  for (int i = 0; i < 4; ++i) {  // beyond the display timeout (15 s)
+    clock.ms += 30000;
+    app.poll();
+  }
+  TEST_ASSERT_FALSE(app.displayActive());
+  app.buttonShortPress();  // switched on again -> calibration page first
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Calibration), static_cast<int>(app.page()));
+  // cycle: Calibration -> Consumption -> Temperatures -> Network -> Calibration
+  app.buttonShortPress();
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Consumption), static_cast<int>(app.page()));
+  app.buttonShortPress();
+  app.buttonShortPress();
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Network), static_cast<int>(app.page()));
+  app.buttonShortPress();
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Calibration), static_cast<int>(app.page()));
+  for (int i = 0; i < 70 && app.calibration().state == CalibState::Running; ++i) {
+    clock.ms += 30000;
+    app.poll();
+  }
+  TEST_ASSERT_EQUAL(static_cast<int>(CalibState::Done), static_cast<int>(app.calibration().state));
+  for (int i = 0; i < 2; ++i) {
+    clock.ms += 30000;
+    app.poll();
+  }
+  TEST_ASSERT_FALSE(app.displayActive());
+  // after the run the cycle no longer contains the calibration page
+  app.buttonShortPress();
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Consumption), static_cast<int>(app.page()));
+  app.buttonShortPress();
+  app.buttonShortPress();
+  app.buttonShortPress();
+  TEST_ASSERT_EQUAL(static_cast<int>(Page::Consumption), static_cast<int>(app.page()));
+}
+
+// Same run as test_calibrator_recovers_parameters, but the sun shines on the reference sensor
+// for 3 min (+3 K): the sums-only fit is pulled off, the outlier pass removes it.
+void test_calibration_outlier_rejection() {
+  const float trueC = 0.30f, trueTau = 10.0f, trueSelfHeat = 1.5f;
+  std::vector<CalibSample> buf;
+  CouplingCalibrator online;
+  online.start(0.0f, 0.0f, 10.0f);
+  float rad = 20.0f, lag = 20.0f;
+  const float dt = 30.0f;
+  for (int i = 0; i <= 300; ++i) {
+    const float tMin = i * dt / 60.0f;
+    const float target = tMin < 20 ? 20.0f : tMin < 90 ? 55.0f : 21.0f;
+    const float tauRad = tMin < 90 ? 8.0f : 25.0f;
+    if (i) rad += (target - rad) * (1.0f - expf(-dt / (tauRad * 60.0f)));
+    if (i) lag += (rad - lag) * (1.0f - expf(-dt / (trueTau * 60.0f)));
+    const float room = 21.0f + tMin / 150.0f;
+    const float noise = 0.03f * static_cast<float>((i * 7919) % 11 - 5) / 5.0f;
+    const float raw = trueSelfHeat + trueC * lag + (1.0f - trueC) * room + noise;
+    const float ref = room + ((i >= 200 && i < 206) ? 3.0f : 0.0f);  // sun on the reference
+    online.add(rad, raw, ref, i ? dt : 0.0f);
+    buf.push_back(makeCalibSample(rad, raw, ref, static_cast<uint32_t>(i * dt)));
+  }
+  const CalibResult plain = online.result();
+  const CalibResult r = fitWithOutlierRejection(buf.data(), buf.size(), 0.0f, 0.0f, 10.0f, 600.0f);
+  TEST_ASSERT_TRUE(r.couplingSolved);
+  TEST_ASSERT_TRUE(r.outliers >= 6 && r.outliers <= 12);
+  TEST_ASSERT_TRUE(fabsf(r.offsetC + trueSelfHeat) < fabsf(plain.offsetC + trueSelfHeat));
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, -trueSelfHeat, r.offsetC);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, trueC, r.coupling);
+  TEST_ASSERT_EQUAL_FLOAT(trueTau, r.tauMin);
+  TEST_ASSERT_TRUE(r.rmsAfterK < plain.rmsAfterK);
+}
+
+// The app keeps the samples only during the run and gives the memory back afterwards.
+void test_calibration_memory_released() {
+  FakeClock clock;
+  FixedSensor rad(30.0f), room(22.0f), ref(21.0f);
+  FakeBattery bat;
+  FakeStorage st;
+  FakeMemory mem;
+  Hal hal{clock, rad, room, bat, st, nullptr, nullptr, nullptr, &ref, &mem};
+  HkvApp app(hal);
+  app.begin(1);
+  TEST_ASSERT_NULL(app.startCalibration(7200));
+  TEST_ASSERT_EQUAL(1, mem.outstanding);
+  TEST_ASSERT_TRUE(mem.lastBytes >= 240 * sizeof(CalibSample) && mem.lastBytes < 3000);
+  TEST_ASSERT_NOT_NULL(app.startCalibration(7200));  // already running
+  for (int i = 0; i < 40; ++i) {
+    clock.ms += 30000;
+    app.poll();
+  }
+  app.stopCalibration();
+  TEST_ASSERT_EQUAL(0, mem.outstanding);
+  TEST_ASSERT_TRUE(app.calibration().applied);
+  TEST_ASSERT_TRUE(app.counting());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_calendar_roundtrip);
@@ -676,6 +995,15 @@ int main(int, char**) {
   RUN_TEST(test_room_coupling);
   RUN_TEST(test_room_coupling_lag);
   RUN_TEST(test_time_gap_tracking);
+  RUN_TEST(test_calibrator_recovers_parameters);
+  RUN_TEST(test_calibrator_offset_only);
+  RUN_TEST(test_app_calibration_run);
+  RUN_TEST(test_app_calibration_stopped_early);
+  RUN_TEST(test_settings_migration_v5);
+  RUN_TEST(test_calibration_short_run_warmup);
+  RUN_TEST(test_calibration_page_in_cycle);
+  RUN_TEST(test_calibration_outlier_rejection);
+  RUN_TEST(test_calibration_memory_released);
   RUN_TEST(test_aes_fips197);
   RUN_TEST(test_crc16_check_value);
   RUN_TEST(test_oms_unencrypted_frame);

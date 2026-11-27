@@ -45,6 +45,7 @@ void setDefaults(Settings& s, uint32_t defaultMeterId) {
   s.displayFlip = 0;
   s.roomCoupling = 0.0f;
   s.roomCouplingTauMin = 10.0f;
+  s.calibrated = 0;
 }
 
 static bool inRange(float v, float lo, float hi) { return v >= lo && v <= hi; }
@@ -82,6 +83,7 @@ const char* validate(const Settings& s) {
   if (s.displayInvert > 1 || s.displayFlip > 1) return "display options must be 0 or 1";
   if (!inRange(s.roomCoupling, 0.0f, 0.8f)) return "room sensor coupling must be 0..0.8";
   if (!inRange(s.roomCouplingTauMin, 0.0f, 60.0f)) return "coupling time constant must be 0..60 min";
+  if (s.calibrated > 1) return "calibrated must be 0 or 1";
   return nullptr;
 }
 

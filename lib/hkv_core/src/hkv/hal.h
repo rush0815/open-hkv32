@@ -97,6 +97,15 @@ class ITelegramSink {
   virtual void send(const uint8_t* frame, size_t len) = 0;
 };
 
+// Temporary working memory, e.g. the samples of a calibration run (a few KB for a few hours).
+// The core itself never uses the heap; it asks the port and gives the memory back right after.
+class IMemory {
+ public:
+  virtual ~IMemory() = default;
+  virtual void* acquire(size_t bytes) = 0;  // nullptr = not available
+  virtual void release(void* p) = 0;
+};
+
 struct DisplayModel;  // display_model.h
 
 class IDisplay {

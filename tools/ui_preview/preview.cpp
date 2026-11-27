@@ -73,6 +73,10 @@ int main(int argc, char** argv) {
   std::vector<DisplayModel> screens;
   DisplayModel m = base();
   m.page = Page::Consumption; screens.push_back(m);
+  { DisplayModel c = m; c.page = Page::Calibration; c.calib.state = 1; c.calib.elapsedS = 90; c.calib.durationS = 600; c.calib.warmupS = 200;
+    c.calib.radiatorC = 48.62f; c.calib.roomRawC = 27.31f; c.calib.referenceC = 21.44f; strcpy(c.calib.refName, "BMP280");
+    c.alloc.state = hkv::CountState::Calibrating; screens.push_back(c);
+    c.calib.elapsedS = 7200; c.calib.state = 2; screens.push_back(c); }
   m.page = Page::Temperatures; m.live = true; screens.push_back(m); m.live = false;
   m.page = Page::Network; screens.push_back(m);
   m.page = Page::Network; m.net.mode = NetInfo::Mode::AccessPoint; screens.push_back(m);

@@ -114,7 +114,7 @@ void qrCopy(esp_qrcode_handle_t h) {
 void NetManager::begin() {
   loadSettings();
   setupRoutes();
-  mqtt_.setBufferSize(1024);
+  mqtt_.setBufferSize(2048);  // grows in mqttPublishState() if the status gets bigger
   applyPower();
   if (!HKV_ENABLE_WIFI) return;
   if (ns_.ssid[0] == '\0') {
@@ -439,6 +439,7 @@ void NetManager::mqttLoop() {
     return;
   }
   mqtt_.loop();
+  if (mqttLastFailed_ && now - mqttFailedAt_ < kMqttRetryMs) return;  // back off after a failure
   if (transferDue()) mqttPublishState();
 }
 
@@ -491,7 +492,14 @@ void NetManager::mqttPublishState() {
   String j;
   statusJson(j);
   const String topic = mqttBase() + "/state";
+  // The status grows with new features (e.g. calibration data): the MQTT buffer must hold the
+  // whole packet (payload + topic + header), otherwise publish() fails silently.
+  const size_t need = j.length() + topic.length() + 16;
+  if (need > mqtt_.getBufferSize() && !mqtt_.setBufferSize(static_cast<uint16_t>(need + 256))) {
+    HKV_LOG("mqtt: no memory for a %u byte buffer", static_cast<unsigned>(need + 256));
+  }
   if (mqtt_.publish(topic.c_str(), j.c_str(), true)) {
+    mqttLastFailed_ = false;
     mqttLastPublish_ = millis();
     mqttPublishedOnce_ = true;
     publishedInSession_ = true;
@@ -499,7 +507,9 @@ void NetManager::mqttPublishState() {
     if (xfer_.mode == hkv::TransferSchedule::Times && app_.localTime(lt))
       nextDueIdx_ = hkv::nextScheduledMinute(xfer_, hkv::localMinuteIndex(lt));
   } else {
-    HKV_LOG("mqtt: publish failed (%u bytes)", j.length());
+    mqttLastFailed_ = true;
+    mqttFailedAt_ = millis();
+    HKV_LOG("mqtt: publish failed (%u bytes, buffer %u)", j.length(), mqtt_.getBufferSize());
   }
 }
 
@@ -521,6 +531,11 @@ void NetManager::mqttPublishDiscovery() {
       {"battery", "Akku", "{{ value_json.battery_pct }}", "%", "battery", "measurement"},
       {"rssi", "WLAN-Signal", "{{ value_json.rssi }}", "dBm", "signal_strength", "measurement"},
       {"state", "Zustand", "{{ value_json.state }}", nullptr, nullptr, nullptr},
+      // calibration run (empty outside a run)
+      {"cal_ref", "Kalibrierung Referenz", "{{ value_json.calib.ref_c | default(none) }}", "°C", "temperature", "measurement"},
+      {"cal_room", "Kalibrierung Raumfühler roh", "{{ value_json.calib.room_raw_c | default(none) }}", "°C", "temperature", "measurement"},
+      {"cal_prog", "Kalibrierung Fortschritt",
+       "{% set c = value_json.calib %}{{ (100 * c.elapsed_s / c.duration_s) | round(0) if c.duration_s else none }}", "%", nullptr, nullptr},
   };
   char id[16];
   snprintf(id, sizeof(id), "%08lu", static_cast<unsigned long>(app_.settings().meterId));
@@ -876,6 +891,49 @@ void NetManager::handleSetTime() {
   sendJson(200, jsonResult(true, "Uhrzeit übernommen"));
 }
 
+// Calibration run with the reference sensor (state, progress, interim / final result).
+String NetManager::calibJson() const {
+  const hkv::CalibStatus& c = app_.calibration();
+  static const char* const kStates[] = {"idle", "running", "done", "aborted"};
+  static const char* const kReasons[] = {"", "user", "reference_lost", "sensor_lost"};
+  const uint8_t si = static_cast<uint8_t>(c.state), ri = static_cast<uint8_t>(c.abort);
+  String j = "\"calib\":{\"calibrated\":";
+  j += app_.calibrated() ? "true" : "false";
+  j += ",\"port\":";
+  j += app_.hasReferencePort() ? "true" : "false";
+  j += ",\"state\":\"";
+  j += si < 4 ? kStates[si] : "idle";
+  j += "\",\"reason\":\"";
+  j += ri < 4 ? kReasons[ri] : "";
+  j += "\"";
+  if (c.state != hkv::CalibState::Idle) {
+    char b[200];
+    snprintf(b, sizeof(b), ",\"ref_name\":\"%s\",\"duration_s\":%lu,\"warmup_s\":%lu,\"elapsed_s\":%lu,\"samples\":%lu,\"applied\":%s",
+             app_.referenceName(), static_cast<unsigned long>(c.durationS), static_cast<unsigned long>(c.warmupS),
+             static_cast<unsigned long>(c.elapsedS),
+             static_cast<unsigned long>(c.samplesRead), c.applied ? "true" : "false");
+    j += b;
+    j += ",\"ref_c\":" + (c.lastReference.valid ? fmtFloat(c.lastReference.celsius, 2) : String("null"));
+    j += ",\"radiator_c\":" + (!isnan(c.lastRadiatorC) ? fmtFloat(c.lastRadiatorC, 1) : String("null"));
+    j += ",\"room_raw_c\":" + (!isnan(c.lastRoomRawC) ? fmtFloat(c.lastRoomRawC, 2) : String("null"));
+    const hkv::CalibResult& r = c.result;
+    if (r.valid) {
+      snprintf(b, sizeof(b),
+               ",\"result\":{\"solved\":%s,\"offset\":%.2f,\"coupling\":%.2f,\"tau\":%.0f,\"rms_before\":%.2f,"
+               "\"rms_after\":%.2f,\"span\":%.1f,\"samples\":%lu,\"outliers\":%lu}",
+               r.couplingSolved ? "true" : "false", static_cast<double>(r.offsetC), static_cast<double>(r.coupling),
+               static_cast<double>(r.tauMin), static_cast<double>(r.rmsBeforeK), static_cast<double>(r.rmsAfterK),
+               static_cast<double>(r.spanK), static_cast<unsigned long>(r.samples),
+               static_cast<unsigned long>(r.outliers));
+      j += b;
+    } else {
+      j += ",\"result\":null";
+    }
+  }
+  j += "}";
+  return j;
+}
+
 void NetManager::handleAction() {
   if (!requireAuth()) return;
   const String what = server_.arg("do");
@@ -906,6 +964,30 @@ void NetManager::handleAction() {
     restartPending_ = true;
     restartAt_ = millis() + 1500;
     sendJson(200, jsonResult(true, "Werkseinstellungen – Neustart"));
+  } else if (what == "calib_probe") {
+    hkv::TempReading r;
+    if (!app_.readReference(r)) {
+      sendJson(404, jsonResult(false, "Kein Referenzfühler gefunden (SHT4x an 0x44–0x46 oder zweiter BMP280 an 0x77)"));
+      return;
+    }
+    sendJson(200, jsonResult(true, String("Referenzfühler ") + app_.referenceName() + " gefunden: " +
+                                       fmtFloat(r.celsius, 2) + " °C"));
+  } else if (what == "calib_start") {
+    const long minutes = server_.arg("dur").toInt();
+    const char* e = app_.startCalibration(static_cast<uint32_t>(minutes > 0 ? minutes : 0) * 60u);
+    if (e) {
+      String msg = e;
+      if (msg == "reference sensor not found")
+        msg = "Kein Referenzfühler gefunden (SHT4x an 0x44–0x46 oder zweiter BMP280 an 0x77)";
+      else if (msg == "duration out of range")
+        msg = "Dauer muss zwischen 1 und 720 Minuten liegen";
+      sendJson(409, jsonResult(false, msg));
+      return;
+    }
+    sendJson(200, jsonResult(true, String("Kalibrierlauf gestartet (Referenz ") + app_.referenceName() + ")"));
+  } else if (what == "calib_stop") {
+    app_.stopCalibration();
+    sendJson(200, jsonResult(true, "Kalibrierlauf beendet – Werte berechnet und übernommen"));
   } else if (what == "calibrate_coupling") {
     // c from a reference room temperature (thermometer); uses a fresh live reading.
     String v = server_.arg("ref");
@@ -1005,7 +1087,7 @@ void NetManager::statusJson(String& j) const {
   const hkv::Snapshot& sn = app_.snapshot();
   const hkv::MeterData& md = app_.meterData();
   const hkv::Settings& st = app_.settings();
-  j.reserve(1900);
+  j.reserve(2300);
   char b[200];
   snprintf(b, sizeof(b), "{\"id\":\"%08lu\",\"manufacturer\":\"%s\",\"fw\":\"%s\",\"uptime_s\":%lu,\"measurements\":%lu,",
            static_cast<unsigned long>(st.meterId), st.manufacturer, HKV_FIRMWARE_VERSION,
@@ -1081,7 +1163,7 @@ void NetManager::statusJson(String& j) const {
     NetManager* self = const_cast<NetManager*>(this);
     j += String("\"xfer\":{\"schedule\":\"") + xs + "\",\"last_s\":" +
          (mqttPublishedOnce_ ? String((millis() - mqttLastPublish_) / 1000) : String("null")) + ",\"next_s\":" +
-         (!ns_.mqttEnabled || !ns_.mqttHost[0] ? String("null") : String(self->secondsToNextTransfer())) + "},";
+         (!ns_.mqttEnabled || !ns_.mqttHost[0] ? String("null") : String(self->secondsToNextTransfer())) + ",\"failed\":" + (mqttLastFailed_ ? "true" : "false") + "},";
   }
   uint8_t mac[6];
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -1101,6 +1183,7 @@ void NetManager::statusJson(String& j) const {
   } else {
     j += F("\"time_gap\":null,");
   }
+  j += calibJson() + ",";
   if (md.offsetMilliUnits != 0) {
     snprintf(b, sizeof(b), "\"offset\":{\"units\":%s,\"date\":",
              fmtUnits(static_cast<uint64_t>(md.offsetMilliUnits)).c_str());
